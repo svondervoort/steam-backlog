@@ -14,17 +14,18 @@ cd steam-backlog
 gh repo create steam-backlog --private --source=. --push
 ```
 
-Ga daarna in Vercel (je persoonlijke account) naar *Add New → Project*, importeer de repo, laat Framework Preset op *Other* staan en zet bij Environment Variables `STEAM_API_KEY`. Elke push naar `main` geeft dan een nieuwe productie-deploy en elke andere branch een preview-URL.
+Ga daarna in Vercel (je persoonlijke account) naar *Add New → Project*, importeer de repo, laat Framework Preset op *Other* staan en zet bij Environment Variables `STEAM_API_KEY` en `ALLOWED_STEAMIDS`. Elke push naar `main` geeft dan een nieuwe productie-deploy en elke andere branch een preview-URL.
 
 ## Installeren
 
 1. Vraag een Steam Web API key aan: https://steamcommunity.com/dev/apikey (domein mag alles zijn, bv. `localhost`).
 2. Zet je Steam-profiel en **Gamedetails** op *Openbaar* (Profiel bewerken → Privacyinstellingen).
-3. Deploy op Vercel en zet de env var `STEAM_API_KEY`:
+3. Deploy op Vercel en zet de env vars `STEAM_API_KEY` en `ALLOWED_STEAMIDS` (je eigen steamID64, meerdere komma-gescheiden). Zonder `ALLOWED_STEAMIDS` weigert de site op Vercel elk verzoek, zodat niet iedereen via jouw key gamelijsten kan opvragen. Lokaal mag de var leeg blijven.
 
 ```bash
 vercel                      # eerste keer: project koppelen
 vercel env add STEAM_API_KEY production
+vercel env add ALLOWED_STEAMIDS production
 vercel --prod
 ```
 

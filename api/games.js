@@ -2,6 +2,8 @@
 // GET /api/games?profile=<steamID64 | vanity-naam | profiel-URL>
 // Vereist env var STEAM_API_KEY (https://steamcommunity.com/dev/apikey).
 
+import { allowedSteamIds, isAllowed } from '../lib/allowed.js';
+
 const API = 'https://api.steampowered.com';
 
 export default async function handler(req, res) {
@@ -15,11 +17,18 @@ export default async function handler(req, res) {
     return send(res, 400, { error: 'Vul een Steam-ID, profielnaam of profiel-URL in.' });
   }
 
+  if (allowedSteamIds()?.size === 0) {
+    return send(res, 500, { error: 'ALLOWED_STEAMIDS is niet ingesteld op de server.' });
+  }
+  // Een kaal steamID64 meteen weigeren, zonder eerst Steam aan te roepen
+  if (/^\d{17}$/.test(raw) && !isAllowed(raw)) return forbidden(res);
+
   try {
     const steamid = await resolveSteamId(raw, key);
     if (!steamid) {
       return send(res, 404, { error: `Geen Steam-profiel gevonden voor "${raw}".` });
     }
+    if (!isAllowed(steamid)) return forbidden(res);
 
     const [owned, summary] = await Promise.all([
       steam(`/IPlayerService/GetOwnedGames/v1/`, {
@@ -95,6 +104,10 @@ async function steam(path, params) {
   if (r.status === 401 || r.status === 403) throw new Error('Steam weigert de API key (ongeldig?)');
   if (!r.ok) throw new Error(`Steam antwoordde met HTTP ${r.status}`);
   return r.json();
+}
+
+function forbidden(res) {
+  return send(res, 403, { error: 'Dit Steam-profiel mag niet via deze site worden opgevraagd.' });
 }
 
 function send(res, status, body) {

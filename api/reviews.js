@@ -2,6 +2,8 @@
 // Steam heeft geen officiële API voor "reviews van gebruiker X", dus deze functie
 // leest de openbare pagina steamcommunity.com/profiles/<id>/recommended/ uit (10 reviews per pagina).
 
+import { isAllowed } from '../lib/allowed.js';
+
 const MAX_PAGES = 100; // = max. 1000 reviews
 const BATCH = 5;
 const UA = 'Mozilla/5.0 (compatible; steam-backlog/1.0)';
@@ -10,6 +12,9 @@ export default async function handler(req, res) {
   const steamid = String(req.query.steamid || '').trim();
   if (!/^\d{17}$/.test(steamid)) {
     return send(res, 400, { error: 'Ongeldig steamid (verwacht 17 cijfers).' });
+  }
+  if (!isAllowed(steamid)) {
+    return send(res, 403, { error: 'Dit Steam-profiel mag niet via deze site worden opgevraagd.' });
   }
 
   try {
