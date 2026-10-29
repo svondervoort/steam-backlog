@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steam Backlog</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233b82f6'/><path d='M9 10h14M9 16h14M9 22h9' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #f4f5f7; --surface: #fff; --surface-2: #eef0f3; --border: #dfe2e7;
+  --text: #15181d; --muted: #5d6573; --accent: #2f6fe4; --accent-text: #fff;
+  --danger: #c2372f;
+  --s-none: #8a93a2; --s-backlog: #2f6fe4; --s-playing: #d97706; --s-done: #15803d; --s-dropped: #b42318; --s-skip: #6b7280;
+  --radius: 10px; --shadow: 0 1px 2px rgb(0 0 0 / .06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --surface: #171b21; --surface-2: #1f242c; --border: #2b313b;
+    --text: #e8ebf0; --muted: #98a1b0; --accent: #5b8ff0; --accent-text: #0b0e12;
+    --danger: #f0716a;
+    --s-none: #7d8696; --s-backlog: #6c9bf3; --s-playing: #f2a33a; --s-done: #4cc073; --s-dropped: #f0716a; --s-skip: #8d95a3;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.bar { display: flex; gap: 12px; align-items: center; padding: 12px 0; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 17px; margin-right: auto; display: flex; align-items: center; gap: 8px; }
+.brand svg { flex: none; }
+form.lookup { display: flex; gap: 8px; flex: 1 1 360px; max-width: 520px; }
+input[type=text], input[type=search], input[type=number], select, textarea {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+form.lookup input { flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .55; cursor: default; }
+
+.profile { display: flex; align-items: center; gap: 12px; padding: 16px 0 4px; }
+.profile img { width: 48px; height: 48px; border-radius: 8px; }
+.profile h1 { font-size: 20px; margin: 0; }
+.profile .meta { color: var(--muted); font-size: 13px; }
+.profile .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 12px 0; scrollbar-width: thin; }
+.tab { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface); padding: 6px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; }
+.tab .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.tab[aria-pressed=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 12px; }
+.toolbar input[type=search] { flex: 1 1 220px; }
+.toolbar label.chk { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; }
+
+.list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.game { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  display: grid; grid-template-columns: 138px 1fr auto; gap: 14px; align-items: center; padding: 8px; border-left: 4px solid var(--sc, var(--s-none)); }
+.cover { width: 138px; aspect-ratio: 184/69; border-radius: 6px; background: var(--surface-2); object-fit: cover; display: block; }
+.info { min-width: 0; }
+.name { font-weight: 600; text-decoration: none; color: inherit; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name:hover { text-decoration: underline; }
+.sub { color: var(--muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; text-decoration: none; border: 1px solid currentColor; }
+.badge.up { color: var(--s-done); }
+.badge.down { color: var(--s-dropped); }
+.badge.neutral { color: var(--muted); }
+.badge:hover { background: var(--surface-2); }
+.setting { display: flex; gap: 8px; align-items: flex-start; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.setting input { margin-top: 4px; }
+.setting small { display: block; color: var(--muted); }
+.note-preview { font-size: 13px; margin-top: 2px; color: var(--text); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controls { display: flex; gap: 6px; align-items: center; }
+.controls select { padding: 6px 8px; }
+.prio { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.prio button { border: 0; background: transparent; padding: 6px 9px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 13px; }
+.prio button + button { border-left: 1px solid var(--border); }
+.prio button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); }
+.icon-btn { border: 1px solid var(--border); background: transparent; border-radius: 8px; padding: 6px 8px; cursor: pointer; line-height: 0; color: var(--muted); }
+.icon-btn[data-has=true] { color: var(--accent); border-color: var(--accent); }
+.note-edit { grid-column: 1 / -1; display: none; }
+.game.open .note-edit { display: block; }
+.note-edit textarea { width: 100%; min-height: 64px; resize: vertical; }
+
+.more { display: flex; justify-content: center; padding-bottom: 32px; }
+.empty, .msg { text-align: center; color: var(--muted); padding: 48px 16px; }
+.msg.error { color: var(--danger); }
+.intro { max-width: 560px; margin: 48px auto; text-align: center; }
+.intro h1 { font-size: 26px; margin: 0 0 8px; }
+.intro p { color: var(--muted); }
+
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); padding: 20px; max-width: min(460px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog h2 { margin: 0 0 8px; font-size: 18px; }
+dialog p { color: var(--muted); margin: 0 0 12px; }
+dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.pick { display: flex; gap: 12px; align-items: center; }
+.pick img { width: 184px; max-width: 45%; border-radius: 6px; }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
+.toast.show { opacity: 1; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+@keyframes s { to { transform: rotate(1turn); } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (max-width: 680px) {
+  header { position: static; }
+  .game { grid-template-columns: 96px 1fr; gap: 10px; }
+  .cover { width: 96px; }
+  .controls { grid-column: 1 / -1; flex-wrap: wrap; }
+  .controls select { flex: 1; }
+  .profile { flex-wrap: wrap; }
+  .profile .actions { margin-left: 0; width: 100%; justify-content: flex-start; }
+  form.lookup { max-width: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M9 10h14M9 16h14M9 22h9" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      Steam Backlog
+    </div>
+    <form class="lookup" id="lookup">
+      <label for="profileInput" class="sr">Steam-profiel</label>
+      <input id="profileInput" type="text" placeholder="Steam-ID, profielnaam of profiel-URL" autocomplete="off" required>
+      <button class="btn primary" id="fetchBtn">Ophalen</button>
+    </form>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <section class="intro" id="intro">
+    <h1>Je Steam-bibliotheek als backlog</h1>
+    <p>Vul je steamID64 (17 cijfers), je eigen profielnaam (van <code>steamcommunity.com/id/<b>naam</b></code>) of de volledige profiel-URL in. Je profiel en gamedetails moeten openbaar zijn.</p>
+    <p>Statussen, prioriteiten en notities worden in deze browser bewaard. Met Exporteren maak je een back-up.</p>
+  </section>
+
+  <section id="app" hidden>
+    <div class="profile" id="profile"></div>
+    <nav class="tabs" id="tabs" aria-label="Filter op status"></nav>
+    <div class="toolbar">
+      <label for="search" class="sr">Zoeken</label>
+      <input type="search" id="search" placeholder="Zoek een game…">
+      <label for="sort" class="sr">Sorteren</label>
+      <select id="sort">
+        <option value="name">Naam (A–Z)</option>
+        <option value="priority">Prioriteit</option>
+        <option value="playtime">Meeste speeltijd</option>
+        <option value="playtimeAsc">Minste speeltijd</option>
+        <option value="lastPlayed">Laatst gespeeld</option>
+        <option value="updated">Laatst gewijzigd</option>
+      </select>
+      <label for="reviewFilter" class="sr">Reviews</label>
+      <select id="reviewFilter">
+        <option value="all">Met en zonder review</option>
+        <option value="yes">Met review</option>
+        <option value="no">Zonder review</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="unplayed"> Max. <input type="number" id="unplayedMin" min="0" step="10" value="60" style="width:70px" aria-label="Minuten"> min gespeeld</label>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="more"><button class="btn" id="moreBtn" hidden>Toon meer</button></div>
+  </section>
+
+  <div class="msg" id="msg" hidden></div>
+</main>
+
+<dialog id="bulkDlg">
+  <form method="dialog">
+    <h2>Snel indelen</h2>
+    <p>Zet alle games met status <b>Niet ingedeeld</b> en weinig speeltijd in één keer op <b>Backlog</b>. Handig als je kaarten hebt laten idlen: die speeltijd telt niet echt.</p>
+    <label>Maximaal <input type="number" id="bulkMin" min="0" step="10" value="60" style="width:80px"> minuten gespeeld</label>
+    <p id="bulkCount" style="margin-top:12px"></p>
+    <label class="setting">
+      <input type="checkbox" id="autoReview">
+      <span>Games waarvoor ik een review heb geschreven automatisch op <b>Uitgespeeld</b> zetten
+        <small>Alleen games met status Niet ingedeeld, Backlog of Speelt nu. Zet je zo'n game daarna zelf terug, dan blijft dat zo.</small></span>
+    </label>
+    <div class="row">
+      <button class="btn" value="cancel">Annuleren</button>
+      <button class="btn primary" value="ok" id="bulkOk">Toepassen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="pickDlg">
+  <form method="dialog">
+    <h2>Speel dit hierna</h2>
+    <div class="pick" id="pickBody"></div>
+    <div class="row">
+      <button class="btn" value="again" id="pickAgain">Andere</button>
+      <button class="btn" value="playing" id="pickPlay">Zet op ‘Speelt nu’</button>
+      <button class="btn primary" value="close">Sluiten</button>
+    </div>
+  </form>
+</dialog>
+
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const STATUSES = [
+    { id: 'none',    label: 'Niet ingedeeld' },
+    { id: 'backlog', label: 'Backlog' },
+    { id: 'playing', label: 'Speelt nu' },
+    { id: 'done',    label: 'Uitgespeeld' },
+    { id: 'dropped', label: 'Gestopt' },
+    { id: 'skip',    label: 'Niet interessant' },
+  ];
+  const PRIOS = [{ v: 1, l: 'H', t: 'Hoog' }, { v: 2, l: 'M', t: 'Middel' }, { v: 3, l: 'L', t: 'Laag' }];
+  const PAGE = 60;
+  const K = { last: 'sb:last', ui: 'sb:ui', data: id => `sb:data:${id}`, games: id => `sb:games:${id}`, reviews: id => `sb:reviews:${id}` };
+
+  const $ = s => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else if (k === 'text') n.textContent = v;
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat()) if (c != null) n.append(c);
+    return n;
+  };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { toast('Opslaan in de browser mislukt'); return false; } },
+  };
+
+  const state = {
+    steamid: null, profile: null, fetchedAt: null, games: [], entries: {},
+    filter: 'all', q: '', sort: 'name', unplayed: false, unplayedMin: 60, limit: PAGE,
+    reviews: {}, reviewsPrivate: false, reviewApplied: [], reviewFilter: 'all', autoReview: true,
+  };
+  Object.assign(state, store.get(K.ui, {}), { limit: PAGE });
+
+  const entry = id => state.entries[id] || { status: 'none' };
+  const saveEntries = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied });
+  const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview });
+
+  function setEntry(appid, patch) {
+    const cur = { ...entry(appid), ...patch, updated: Date.now() };
+    if (cur.status === 'none' && !cur.priority && !cur.note) delete state.entries[appid];
+    else state.entries[appid] = cur;
+    saveEntries();
+  }
+
+  // ---------- formatting
+  const nf = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 });
+  const fmtTime = m => m === 0 ? 'Nooit gespeeld' : m < 60 ? `${m} min` : `${nf.format(m / 60)} uur`;
+  const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  const cover = id => `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/capsule_184x69.jpg`;
+  const header = id => `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
+
+  // ---------- data loading
+  async function load(profile, { fresh = false } = {}) {
+    const btn = $('#fetchBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Ophalen';
+    showMsg(null);
+    try {
+      const url = `/api/games?profile=${encodeURIComponent(profile)}${fresh ? `&t=${Date.now()}` : ''}`;
+      const r = await fetch(url);
+      const data = await r.json().catch(() => ({ error: `Onverwacht antwoord (HTTP ${r.status})` }));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      apply(data);
+      store.set(K.last, profile);
+      store.set(K.games(data.steamid), data);
+      toast(`${data.games.length} games opgehaald`);
+      loadReviews({ fresh });
+    } catch (e) {
+      if (!state.steamid) { $('#intro').hidden = false; $('#app').hidden = true; }
+      showMsg(e.message, true);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Ophalen';
+    }
+  }
+
+  function apply(data) {
+    state.steamid = data.steamid;
+    state.profile = data.profile;
+    state.fetchedAt = data.fetchedAt;
+    state.games = data.games;
+    const saved = store.get(K.data(data.steamid), {});
+    state.entries = saved.entries || {};
+    state.reviewApplied = saved.reviewApplied || [];
+    const cachedReviews = store.get(K.reviews(data.steamid), null);
+    state.reviews = cachedReviews?.reviews || {};
+    state.reviewsPrivate = !!cachedReviews?.private;
+    state.limit = PAGE;
+    $('#intro').hidden = true; $('#app').hidden = false;
+    renderAll();
+  }
+
+  // ---------- reviews (los opgehaald: scrapen van de reviewpagina's duurt langer)
+  let reviewsLoading = null;
+  async function loadReviews({ fresh = false } = {}) {
+    const id = state.steamid;
+    if (!id || reviewsLoading === id) return;
+    reviewsLoading = id;
+    try {
+      const r = await fetch(`/api/reviews?steamid=${id}${fresh ? `&t=${Date.now()}` : ''}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      if (state.steamid !== id) return;
+      state.reviews = data.reviews || {};
+      state.reviewsPrivate = !!data.private;
+      store.set(K.reviews(id), data);
+      applyReviewStatus();
+      renderAll();
+    } catch (e) {
+      console.warn('Reviews', e);
+      toast(`Reviews ophalen mislukt: ${e.message}`);
+    } finally {
+      reviewsLoading = null;
+    }
+  }
+
+  // Review geschreven → Uitgespeeld. Elke game maar één keer, zodat een handmatige wijziging blijft staan.
+  function applyReviewStatus() {
+    if (!state.autoReview) return 0;
+    const done = new Set(state.reviewApplied.map(String));
+    const owned = new Set(state.games.map(g => String(g.appid)));
+    let n = 0;
+    for (const appid of Object.keys(state.reviews)) {
+      if (done.has(appid) || !owned.has(appid)) continue;
+      done.add(appid);
+      if (['none', 'backlog', 'playing'].includes(entry(appid).status)) {
+        state.entries[appid] = { ...entry(appid), status: 'done', updated: Date.now() };
+        n++;
+      }
+    }
+    state.reviewApplied = [...done];
+    saveEntries();
+    if (n) toast(`${n} game${n === 1 ? '' : 's'} met een review op Uitgespeeld gezet`);
+    return n;
+  }
+
+  // ---------- rendering
+  function renderAll() { renderProfile(); renderTabs(); renderList(); }
+
+  function renderProfile() {
+    const p = state.profile || {};
+    const fetched = state.fetchedAt ? new Date(state.fetchedAt).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const total = state.games.reduce((s, g) => s + g.playtime, 0);
+    $('#profile').replaceChildren(
+      p.avatar ? el('img', { src: p.avatar, alt: '' }) : '',
+      el('div', {},
+        el('h1', {}, p.url ? el('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'name', text: p.name || state.steamid }) : (p.name || state.steamid)),
+        el('div', { class: 'meta', text: [
+          `${state.games.length} games`,
+          `${nf.format(Math.round(total / 60))} uur totaal`,
+          state.reviewsPrivate ? 'reviews niet openbaar' : `${Object.keys(state.reviews).length} reviews`,
+          `opgehaald ${fetched}`,
+        ].join(' · ') })),
+      el('div', { class: 'actions' },
+        el('button', { class: 'btn', onclick: pickRandom, text: 'Wat speel ik?' }),
+        el('button', { class: 'btn', onclick: openBulk, text: 'Snel indelen' }),
+        el('button', { class: 'btn', onclick: () => load(state.steamid, { fresh: true }), text: 'Vernieuwen' }),
+        el('button', { class: 'btn', onclick: exportData, text: 'Exporteren' }),
+        el('button', { class: 'btn', onclick: () => $('#importFile').click(), text: 'Importeren' })));
+  }
+
+  function renderTabs() {
+    const counts = { all: state.games.length };
+    for (const s of STATUSES) counts[s.id] = 0;
+    for (const g of state.games) counts[entry(g.appid).status]++;
+    const tabs = [{ id: 'all', label: 'Alle' }, ...STATUSES];
+    $('#tabs').replaceChildren(...tabs.map(t => el('button', {
+      class: 'tab', 'aria-pressed': String(state.filter === t.id),
+      onclick: () => { state.filter = t.id; state.limit = PAGE; saveUi(); renderTabs(); renderList(); },
+    }, t.id !== 'all' ? el('span', { class: 'dot', style: `background:var(--s-${t.id})` }) : null, t.label, el('span', { class: 'n', text: counts[t.id] }))));
+  }
+
+  function filtered() {
+    const q = state.q.toLowerCase();
+    let list = state.games.filter(g => {
+      const e = entry(g.appid);
+      if (state.filter !== 'all' && e.status !== state.filter) return false;
+      if (state.unplayed && g.playtime > state.unplayedMin) return false;
+      if (state.reviewFilter !== 'all' && (state.reviewFilter === 'yes') !== !!state.reviews[g.appid]) return false;
+      if (q && !g.name.toLowerCase().includes(q) && !(e.note || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const byName = (a, b) => a.name.localeCompare(b.name, 'nl', { sensitivity: 'base' });
+    const cmp = {
+      name: byName,
+      playtime: (a, b) => b.playtime - a.playtime || byName(a, b),
+      playtimeAsc: (a, b) => a.playtime - b.playtime || byName(a, b),
+      lastPlayed: (a, b) => b.lastPlayed - a.lastPlayed || byName(a, b),
+      priority: (a, b) => (entry(a.appid).priority || 9) - (entry(b.appid).priority || 9) || byName(a, b),
+      updated: (a, b) => (entry(b.appid).updated || 0) - (entry(a.appid).updated || 0) || byName(a, b),
+    }[state.sort] || byName;
+    return list.sort(cmp);
+  }
+
+  function renderList() {
+    const list = filtered();
+    const shown = list.slice(0, state.limit);
+    const box = $('#list');
+    if (!list.length) {
+      box.replaceChildren(el('div', { class: 'empty', text: state.games.length ? 'Geen games in deze selectie.' : 'Geen games gevonden.' }));
+    } else {
+      box.replaceChildren(...shown.map(gameRow));
+    }
+    const more = $('#moreBtn');
+    more.hidden = list.length <= state.limit;
+    more.textContent = `Toon meer (${list.length - shown.length} over)`;
+  }
+
+  function gameRow(g) {
+    const e = entry(g.appid);
+    const row = el('article', { class: 'game', style: `--sc:var(--s-${e.status})`, 'data-appid': g.appid });
+    const img = el('img', { class: 'cover', src: cover(g.appid), alt: '', loading: 'lazy', width: 184, height: 69 });
+    img.addEventListener('error', () => { if (g.icon && img.src !== g.icon) { img.src = g.icon; img.style.objectFit = 'contain'; } else img.style.visibility = 'hidden'; }, { once: false });
+
+    const last = fmtDate(g.lastPlayed);
+    const info = el('div', { class: 'info' },
+      el('a', { class: 'name', href: `https://store.steampowered.com/app/${g.appid}`, target: '_blank', rel: 'noopener', text: g.name, title: g.name }),
+      el('div', { class: 'sub' },
+        el('span', { text: fmtTime(g.playtime) }),
+        last ? el('span', { text: `Laatst: ${last}` }) : null,
+        g.playtime2w ? el('span', { text: `${fmtTime(g.playtime2w)} afgelopen 2 wk` }) : null,
+        reviewBadge(state.reviews[g.appid])),
+      e.note ? el('div', { class: 'note-preview', text: e.note }) : null);
+
+    const sel = el('select', { 'aria-label': `Status van ${g.name}`, onchange: ev => {
+      setEntry(g.appid, { status: ev.target.value });
+      row.style.setProperty('--sc', `var(--s-${ev.target.value})`);
+      renderTabs();
+      if (state.filter !== 'all') renderList();
+    } }, STATUSES.map(s => el('option', { value: s.id, selected: s.id === e.status, text: s.label })));
+
+    const prio = el('div', { class: 'prio', role: 'group', 'aria-label': 'Prioriteit' },
+      PRIOS.map(p => el('button', { type: 'button', title: `Prioriteit ${p.t}`, 'aria-pressed': String(e.priority === p.v), text: p.l, onclick: ev => {
+        const now = entry(g.appid).priority === p.v ? null : p.v;
+        setEntry(g.appid, { priority: now });
+        prio.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', String(PRIOS[i].v === now)));
+        if (state.sort === 'priority') renderList();
+      } })));
+
+    const noteBtn = el('button', { type: 'button', class: 'icon-btn', title: 'Notitie', 'aria-label': 'Notitie', 'data-has': String(!!e.note), 'aria-expanded': 'false', onclick: () => {
+      const open = row.classList.toggle('open');
+      noteBtn.setAttribute('aria-expanded', String(open));
+      if (open) ta.focus();
+    } });
+    noteBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+    let t;
+    const ta = el('textarea', { placeholder: 'Notitie, bv. waar je gebleven was of waarom je het wil spelen…', 'aria-label': `Notitie voor ${g.name}` });
+    ta.value = e.note || '';
+    ta.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const note = ta.value.trim();
+        setEntry(g.appid, { note: note || undefined });
+        noteBtn.setAttribute('data-has', String(!!note));
+        let pv = info.querySelector('.note-preview');
+        if (note) { if (!pv) info.append(pv = el('div', { class: 'note-preview' })); pv.textContent = note; }
+        else pv?.remove();
+      }, 300);
+    });
+
+    row.append(img, info, el('div', { class: 'controls' }, sel, prio, noteBtn), el('div', { class: 'note-edit' }, ta));
+    return row;
+  }
+
+  const THUMB = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9Z"/></svg>';
+  function reviewBadge(rv) {
+    if (!rv) return null;
+    const kind = rv.up === true ? 'up' : rv.up === false ? 'down' : 'neutral';
+    const label = { up: 'Aanbevolen', down: 'Niet aanbevolen', neutral: 'Review' }[kind];
+    const a = el('a', { class: `badge ${kind}`, href: rv.url, target: '_blank', rel: 'noopener', title: rv.posted ? `Review geplaatst: ${rv.posted}` : 'Bekijk je review' });
+    a.innerHTML = kind === 'down' ? THUMB.replace('<svg ', '<svg style="transform:scaleY(-1)" ') : kind === 'up' ? THUMB : '';
+    a.append(label);
+    return a;
+  }
+
+  // ---------- actions
+  function openBulk() {
+    const dlg = $('#bulkDlg'), inp = $('#bulkMin');
+    const count = () => state.games.filter(g => entry(g.appid).status === 'none' && g.playtime <= Number(inp.value || 0)).length;
+    const upd = () => { const n = count(); $('#bulkCount').textContent = `${n} game${n === 1 ? '' : 's'} worden op Backlog gezet.`; $('#bulkOk').disabled = !n; };
+    inp.oninput = upd; upd();
+    const auto = $('#autoReview');
+    auto.checked = state.autoReview;
+    auto.onchange = () => {
+      state.autoReview = auto.checked; saveUi();
+      if (auto.checked && applyReviewStatus()) { renderTabs(); renderList(); }
+    };
+    dlg.onclose = () => {
+      if (dlg.returnValue !== 'ok') return;
+      const max = Number(inp.value || 0);
+      let n = 0;
+      for (const g of state.games) if (entry(g.appid).status === 'none' && g.playtime <= max) { state.entries[g.appid] = { ...entry(g.appid), status: 'backlog', updated: Date.now() }; n++; }
+      saveEntries(); renderTabs(); renderList(); toast(`${n} games op Backlog gezet`);
+    };
+    dlg.showModal();
+  }
+
+  function pickRandom() {
+    const pool = state.games.filter(g => entry(g.appid).status === 'backlog');
+    if (!pool.length) return toast('Je backlog is nog leeg');
+    // Hoge prioriteit telt zwaarder mee
+    const w = g => ({ 1: 4, 2: 2, 3: 1 })[entry(g.appid).priority] || 1.5;
+    const show = () => {
+      let r = Math.random() * pool.reduce((s, g) => s + w(g), 0), pick = pool[0];
+      for (const g of pool) { r -= w(g); if (r <= 0) { pick = g; break; } }
+      const e = entry(pick.appid);
+      $('#pickBody').replaceChildren(
+        el('img', { src: header(pick.appid), alt: '' }),
+        el('div', {}, el('strong', { text: pick.name }), el('div', { class: 'sub', text: fmtTime(pick.playtime) }),
+          e.note ? el('div', { class: 'sub', text: e.note }) : null));
+      dlg.dataset.appid = pick.appid;
+    };
+    const dlg = $('#pickDlg');
+    dlg.onclose = () => {
+      if (dlg.returnValue === 'again') { show(); dlg.showModal(); }
+      else if (dlg.returnValue === 'playing') { setEntry(Number(dlg.dataset.appid), { status: 'playing' }); renderTabs(); renderList(); toast('Veel plezier!'); }
+    };
+    show(); dlg.showModal();
+  }
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify({ app: 'steam-backlog', version: 1, steamid: state.steamid, exportedAt: new Date().toISOString(), entries: state.entries }, null, 2)], { type: 'application/json' });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `steam-backlog-${state.steamid}-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  $('#importFile').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; ev.target.value = '';
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data.entries || typeof data.entries !== 'object') throw new Error('Geen geldig back-upbestand');
+      if (data.steamid && data.steamid !== state.steamid && !confirm('Deze back-up hoort bij een ander Steam-profiel. Toch importeren?')) return;
+      let n = 0;
+      for (const [id, e] of Object.entries(data.entries)) {
+        const cur = state.entries[id];
+        if (!cur || (e.updated || 0) >= (cur.updated || 0)) { state.entries[id] = e; n++; }
+      }
+      saveEntries(); renderAll(); toast(`${n} items geïmporteerd`);
+    } catch (e) { toast(`Import mislukt: ${e.message}`); }
+  });
+
+  // ---------- misc UI
+  function showMsg(text, error) {
+    const m = $('#msg');
+    m.hidden = !text; m.textContent = text || ''; m.classList.toggle('error', !!error);
+  }
+  let tt;
+  function toast(text) {
+    const t = $('#toast'); t.textContent = text; t.classList.add('show');
+    clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  $('#lookup').addEventListener('submit', ev => { ev.preventDefault(); const v = $('#profileInput').value.trim(); if (v) load(v, { fresh: true }); });
+  let st;
+  $('#search').addEventListener('input', ev => { clearTimeout(st); st = setTimeout(() => { state.q = ev.target.value.trim(); state.limit = PAGE; renderList(); }, 120); });
+  $('#sort').addEventListener('change', ev => { state.sort = ev.target.value; saveUi(); renderList(); });
+  $('#unplayed').addEventListener('change', ev => { state.unplayed = ev.target.checked; state.limit = PAGE; saveUi(); renderList(); });
+  $('#unplayedMin').addEventListener('input', ev => { state.unplayedMin = Number(ev.target.value || 0); saveUi(); if (state.unplayed) renderList(); });
+  $('#reviewFilter').addEventListener('change', ev => { state.reviewFilter = ev.target.value; state.limit = PAGE; saveUi(); renderList(); });
+  $('#moreBtn').addEventListener('click', () => { state.limit += PAGE; renderList(); });
+
+  // ---------- boot: toon direct de laatst opgehaalde lijst, ververs op de achtergrond
+  $('#sort').value = state.sort; $('#reviewFilter').value = state.reviewFilter;$('#unplayed').checked = state.unplayed; $('#unplayedMin').value = state.unplayedMin;
+  const last = store.get(K.last, null);
+  if (last) {
+    $('#profileInput').value = last;
+    const lastId = /^\d{17}$/.test(last) ? last : null;
+    let keys = [];
+    try { keys = Object.keys(localStorage); } catch {}
+    const cached = keys.filter(k => k.startsWith('sb:games:')).map(k => store.get(k, null)).filter(Boolean)
+      .sort((a, b) => (b.fetchedAt || '').localeCompare(a.fetchedAt || ''))
+      .find(d => !lastId || d.steamid === lastId);
+    if (cached) apply(cached);
+    load(last);
+  }
+})();
+</script>
+</body>
+</html>
