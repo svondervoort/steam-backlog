@@ -134,6 +134,10 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 .cols-axis span { flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
 .top { margin: 0 0 8px; padding-left: 20px; font-size: 14px; }
 .top li span { color: var(--muted); }
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.choices .btn { text-align: left; white-space: normal; }
+.choices .btn small { display: block; color: var(--muted); font-weight: 400; }
+.choices .btn.primary small { color: inherit; opacity: .85; }
 .pick { display: flex; gap: 12px; align-items: center; }
 .pick img { width: 184px; max-width: 45%; border-radius: 6px; }
 
@@ -253,6 +257,19 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       <button class="btn" value="off" id="syncOff">Uitzetten</button>
       <button class="btn" value="cancel">Annuleren</button>
       <button class="btn primary" value="ok">Opslaan</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="syncChoiceDlg">
+  <form method="dialog">
+    <h2>Er staat al een indeling op de server</h2>
+    <p id="syncChoiceInfo"></p>
+    <div class="choices">
+      <button class="btn primary" value="pull">Ophalen van de server<small>Aanbevolen voor een nieuw apparaat. De indeling in deze browser wordt vervangen.</small></button>
+      <button class="btn" value="merge">Samenvoegen<small>Per game wint de meest recente wijziging, ook als die in deze browser automatisch is gemaakt.</small></button>
+      <button class="btn" value="replace">Deze browser uploaden<small>De indeling op de server wordt vervangen door die van deze browser.</small></button>
+      <button class="btn" value="cancel">Annuleren</button>
     </div>
   </form>
 </dialog>
@@ -432,18 +449,24 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     return syncChain = syncChain.then(doSync);
   }
 
+  async function syncRequest(mode, token = sync.token) {
+    const r = await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(mode === 'pull' ? { steamid: state.steamid, mode }
+        : { steamid: state.steamid, mode, entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied }),
+    });
+    const data = await r.json().catch(() => ({ error: `Onverwacht antwoord (HTTP ${r.status})` }));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  }
+
   async function doSync() {
     const id = state.steamid;
     if (!sync.token || !id) { sync.status = 'off'; return; }
     sync.status = 'busy'; renderSyncMeta();
     try {
-      const r = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${sync.token}` },
-        body: JSON.stringify({ steamid: id, entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied }),
-      });
-      const data = await r.json().catch(() => ({ error: `Onverwacht antwoord (HTTP ${r.status})` }));
-      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      const data = await syncRequest('merge');
       if (state.steamid !== id) return;
       const before = JSON.stringify(state.entries);
       state.entries = mergeEntries(state.entries, data.entries);
@@ -481,12 +504,54 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
         Object.assign(sync, { token: '', status: 'off' }); store.set(K.sync, {}); renderSyncMeta();
         toast('Synchroniseren uitgezet');
       } else if (dlg.returnValue === 'ok' && inp.value.trim()) {
-        sync.token = inp.value.trim(); store.set(K.sync, { token: sync.token });
-        await syncNow();
-        toast(sync.status === 'ok' ? 'Gesynchroniseerd' : `Synchroniseren mislukt: ${sync.error}`);
+        const token = inp.value.trim();
+        if (token === sync.token) { await syncNow(); return toast(sync.status === 'ok' ? 'Gesynchroniseerd' : `Synchroniseren mislukt: ${sync.error}`); }
+        connectSync(token);
       }
     };
     dlg.showModal();
+  }
+
+  // Nieuwe koppeling: eerst kijken wat er op de server staat, zodat een vers apparaat
+  // (met alleen automatische indelingen van vandaag) de serverversie niet overschrijft
+  async function connectSync(token) {
+    let remote;
+    try { remote = await syncRequest('pull', token); }
+    catch (e) { return toast(`Synchroniseren mislukt: ${e.message}`); }
+    const manual = entries => Object.values(entries || {}).filter(e => e.status !== 'none' && !e.auto).length;
+    const nRemote = manual(remote.entries), nLocal = manual(state.entries);
+    let mode = !nRemote ? 'merge' : !nLocal ? 'pull' : await askSyncChoice(nRemote, nLocal, remote.savedAt);
+    if (mode === 'cancel') return;
+
+    sync.token = token; store.set(K.sync, { token });
+    try {
+      if (mode === 'pull') useRemote(remote);
+      else if (mode === 'replace') useRemote(await syncRequest('replace'));
+      await syncNow();
+      if (sync.status === 'error') throw new Error(sync.error);
+      toast({ pull: 'Indeling opgehaald van de server', merge: 'Gesynchroniseerd', replace: 'Indeling op de server vervangen' }[mode]);
+    } catch (e) {
+      Object.assign(sync, { status: 'error', error: e.message }); renderSyncMeta();
+      toast(`Synchroniseren mislukt: ${e.message}`);
+    }
+  }
+
+  function askSyncChoice(nRemote, nLocal, savedAt) {
+    const dlg = $('#syncChoiceDlg');
+    const when = savedAt ? `, laatst opgeslagen ${new Date(savedAt).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })}` : '';
+    $('#syncChoiceInfo').textContent = `Op de server: ${nRemote} zelf ingedeelde game${nRemote === 1 ? '' : 's'}${when}. In deze browser: ${nLocal}.`;
+    return new Promise(resolve => { dlg.onclose = () => resolve(dlg.returnValue || 'cancel'); dlg.returnValue = ''; dlg.showModal(); });
+  }
+
+  // Serverversie overnemen en daarna de automatische regels opnieuw toepassen op die indeling
+  function useRemote(data) {
+    state.entries = data.entries || {};
+    state.reviewApplied = (data.reviewApplied || []).map(String);
+    state.playingApplied = (data.playingApplied || []).map(String);
+    saveLocal();
+    applyPlayingStatus();
+    applyReviewStatus();
+    renderTabs(); renderList();
   }
 
   // ---------- reviews (los opgehaald: scrapen van de reviewpagina's duurt langer)

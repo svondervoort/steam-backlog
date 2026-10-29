@@ -38,7 +38,9 @@ Zonder sync staat je indeling alleen in de browser waarin je hem maakt. Met sync
 2. Maak een lang willekeurig token, bv. met `openssl rand -hex 32`, en zet het als env var `SYNC_TOKEN`.
 3. Redeploy. Klik in de app op *Synchroniseren* en vul hetzelfde token in, op elk apparaat één keer.
 
-Per game wint de meest recente wijziging. De app synchroniseert bij het laden, na elke wijziging en als je terugkeert naar het tabblad. Wie het token niet heeft, kan niets lezen of schrijven.
+Staat er bij het koppelen al een indeling op de server en heb je in deze browser ook zelf games ingedeeld, dan kies je: ophalen van de server, samenvoegen of deze browser uploaden. Een nieuw apparaat zonder eigen indeling haalt de serverversie automatisch op.
+
+Daarna wint per game de meest recente wijziging. De app synchroniseert bij het laden, na elke wijziging en als je terugkeert naar het tabblad. Wie het token niet heeft, kan niets lezen of schrijven.
 
 ## Lokaal testen
 

@@ -1,5 +1,6 @@
-// POST /api/sync  { steamid, entries, reviewApplied, playingApplied }
-// Voegt de indeling van dit apparaat samen met die op de server en geeft het resultaat terug.
+// POST /api/sync  { steamid, mode?, entries, reviewApplied, playingApplied }
+// mode 'merge' (standaard): voegt de indeling van dit apparaat samen met die op de server.
+// mode 'pull': geeft alleen de serverversie terug. mode 'replace': de serverversie wordt die van dit apparaat.
 // Per game wint de meest recente wijziging (`updated`). Opslag: Upstash Redis via de REST API.
 // Vereist env vars SYNC_TOKEN en KV_REST_API_URL + KV_REST_API_TOKEN
 // (of UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN).
@@ -29,7 +30,9 @@ export default async function handler(req, res) {
   if (allowedSteamIds()?.size === 0) return send(res, 500, { error: 'ALLOWED_STEAMIDS is niet ingesteld op de server.' });
   if (!isAllowed(steamid)) return send(res, 403, { error: 'Dit Steam-profiel mag niet via deze site worden opgevraagd.' });
 
-  const entries = body.entries;
+  const mode = body.mode || 'merge';
+  if (!['merge', 'pull', 'replace'].includes(mode)) return send(res, 400, { error: 'Ongeldige mode.' });
+  const entries = mode === 'pull' ? {} : body.entries;
   if (!entries || typeof entries !== 'object' || Array.isArray(entries) || Object.keys(entries).length > MAX_ENTRIES) {
     return send(res, 400, { error: 'Ongeldige entries.' });
   }
@@ -37,7 +40,8 @@ export default async function handler(req, res) {
   try {
     const redis = (...cmd) => redisCall(url, token, cmd);
     const key = `sb:sync:${steamid}`;
-    const cur = JSON.parse((await redis('GET', key)) || 'null') || {};
+    const cur = mode === 'replace' ? {} : JSON.parse((await redis('GET', key)) || 'null') || {};
+    if (mode === 'pull') return send(res, 200, { entries: {}, reviewApplied: [], playingApplied: [], ...cur });
     const merged = {
       entries: mergeEntries(cur.entries, entries),
       reviewApplied: union(cur.reviewApplied, body.reviewApplied),
