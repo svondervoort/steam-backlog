@@ -154,6 +154,26 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 .status-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .status-btns .btn { display: inline-flex; align-items: center; gap: 8px; }
 .status-btns .dot { width: 8px; height: 8px; border-radius: 50%; }
+.pick-info { margin-top: 14px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 12px; background: var(--surface-2); }
+.pick-info .src { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 10px; }
+.pick-info .src .store-link { margin: 0 0 0 auto; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; }
+.score { margin-bottom: 10px; }
+.score-top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.score-top b { font-weight: 600; }
+.score-top span { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.score-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.score-bar i { display: block; height: 100%; border-radius: 4px; }
+.score .pos { background: var(--s-done); }
+.score .mixed { background: var(--s-playing); }
+.score .neg { background: var(--s-dropped); }
+.pick-info .desc { margin: 0 0 8px; color: var(--text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pick-info .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.pick-info .meta b { color: var(--text); font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+.shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.shots a { line-height: 0; }
+.shots img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 4px; background: var(--surface-2); }
 .pick > a { flex: none; width: 184px; max-width: 45%; line-height: 0; }
 .pick img { width: 100%; border-radius: 6px; }
 .store-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; color: var(--accent); text-decoration: none; }
@@ -262,6 +282,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       </select></label>
     </div>
     <div class="pick" id="pickBody"></div>
+    <div class="pick-info" id="pickInfo" aria-live="polite"></div>
     <div id="pickActions">
       <p class="pick-label" id="pickLeft"></p>
       <div class="status-btns" id="pickStatus" role="group" aria-label="Indelen als"></div>
@@ -679,6 +700,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     library: '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+    bag: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
   };
@@ -894,6 +916,53 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     dlg.showModal();
   }
 
+  // ---------- store-informatie voor de popup (via /api/appinfo, per sessie onthouden)
+  const appInfo = new Map();
+  const fetchInfo = appid => {
+    if (!appInfo.has(appid)) {
+      appInfo.set(appid, fetch(`/api/appinfo?appid=${appid}`)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+        .then(d => { if (!d) appInfo.delete(appid); return d; }));
+    }
+    return appInfo.get(appid);
+  };
+  // Steam levert de beschrijving soms met HTML-entities; DOMParser voert niets uit
+  const decode = s => new DOMParser().parseFromString(s, 'text/html').documentElement.textContent;
+
+  // Zelfde grenzen als Steam: vanaf 70% positief, 40–69% gemengd, daaronder negatief
+  const scoreBand = pct => pct >= 70 ? 'pos' : pct >= 40 ? 'mixed' : 'neg';
+
+  async function showInfo(appid) {
+    const box = $('#pickInfo');
+    box.dataset.appid = appid;
+    // Kader met kop: alles hierin komt uit de Steam Store, niet uit je backlog
+    const head = el('div', { class: 'src' }, icon('bag'), 'Steam Store',
+      el('a', { class: 'store-link', href: `https://store.steampowered.com/app/${appid}`, target: '_blank', rel: 'noopener' }, icon('external'), 'Bekijk in de Store'));
+    box.replaceChildren(head, el('div', { class: 'meta', text: 'Laden…' }));
+    const d = await fetchInfo(appid);
+    if (box.dataset.appid !== String(appid)) return;
+    if (!d) return box.replaceChildren(head, el('div', { class: 'meta', text: 'Geen store-informatie beschikbaar.' }));
+    const rv = d.reviews;
+    const year = d.released ? new Date(d.released * 1000).getFullYear() : null;
+    const score = rv ? el('div', { class: 'score' },
+      el('div', { class: 'score-top' }, el('b', { text: rv.label }), el('span', { text: `${rv.percent}% positief · ${nf.format(rv.count)} reviews` })),
+      el('div', { class: 'score-bar', role: 'meter', 'aria-label': 'Positieve reviews', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': rv.percent, 'aria-valuetext': `${rv.percent}% positief` },
+        el('i', { class: scoreBand(rv.percent), style: `width:${rv.percent}%` })))
+      : el('div', { class: 'meta', text: 'Nog geen reviews' });
+    // replaceChildren maakt van null de tekst "null", dus lege onderdelen eruit filteren
+    box.replaceChildren(...[
+      head,
+      score,
+      d.description ? el('p', { class: 'desc', text: decode(d.description) }) : null,
+      year ? el('div', { class: 'meta', text: `Uitgebracht in ${year}` }) : null,
+      d.tags.length ? el('div', { class: 'chips', 'aria-label': 'Tags' }, d.tags.map(t => el('span', { class: 'chip', text: t }))) : null,
+      d.screenshots.length ? el('div', { class: 'shots' }, d.screenshots.map((s, i) =>
+        el('a', { href: s.full, target: '_blank', rel: 'noopener', 'aria-label': `Screenshot ${i + 1} openen` },
+          el('img', { src: s.thumb, alt: '', loading: 'lazy' })))) : null,
+    ].filter(Boolean));
+  }
+
   // Willekeurige game uit Backlog of Niet ingedeeld; indelen gaat meteen door naar de volgende
   function pickRandom() {
     const dlg = $('#pickDlg'), poolSel = $('#pickPool');
@@ -909,6 +978,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       if (!list.length) {
         current = null;
         $('#pickBody').replaceChildren(el('p', { text: `Geen games meer in ${STATUSES.find(s => s.id === state.pickPool).label}.` }));
+        $('#pickInfo').replaceChildren();
         return;
       }
       let r = Math.random() * list.reduce((s, g) => s + w(g), 0), pick = list[0];
@@ -919,8 +989,8 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       $('#pickBody').replaceChildren(
         el('a', { href: store, target: '_blank', rel: 'noopener', tabindex: '-1', 'aria-hidden': 'true' }, el('img', { src: header(pick.appid), alt: '' })),
         el('div', {}, el('strong', { text: pick.name }), el('div', { class: 'sub', text: fmtTime(pick.playtime) }),
-          e.note ? el('div', { class: 'sub', text: e.note }) : null,
-          el('a', { class: 'store-link', href: store, target: '_blank', rel: 'noopener' }, icon('external'), 'Bekijk in de Steam Store')));
+          e.note ? el('div', { class: 'sub', text: e.note }) : null));
+      showInfo(pick.appid);
       const n = pool().length;
       $('#pickLeft').textContent = `Indelen als (${n} game${n === 1 ? '' : 's'} in ${STATUSES.find(s => s.id === state.pickPool).label})`;
     };
@@ -1011,7 +1081,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 
     const top = [...games].sort((a, b) => b.playtime - a.playtime).slice(0, 5).filter(g => g.playtime);
 
-    $('#statsBody').replaceChildren(
+    $('#statsBody').replaceChildren(...[
       el('div', { class: 'tiles' },
         tile(n, 'games'),
         tile(hours(games.reduce((s, g) => s + g.playtime, 0)), 'uur gespeeld'),
@@ -1022,7 +1092,8 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       el('h3', { text: 'Per status' }), hbars,
       ...yearChart,
       top.length ? el('h3', { text: 'Meest gespeeld' }) : null,
-      top.length ? el('ol', { class: 'top' }, top.map(g => el('li', {}, `${g.name} `, el('span', { text: fmtTime(g.playtime) })))) : null);
+      top.length ? el('ol', { class: 'top' }, top.map(g => el('li', {}, `${g.name} `, el('span', { text: fmtTime(g.playtime) })))) : null,
+    ].filter(Boolean));
     $('#statsDlg').showModal();
   }
 

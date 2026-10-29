@@ -5,8 +5,9 @@ import { readFile } from 'node:fs/promises';
 import games from './api/games.js';
 import reviews from './api/reviews.js';
 import sync from './api/sync.js';
+import appinfo from './api/appinfo.js';
 
-const routes = { '/api/games': games, '/api/reviews': reviews, '/api/sync': sync };
+const routes = { '/api/games': games, '/api/reviews': reviews, '/api/sync': sync, '/api/appinfo': appinfo };
 
 const PORT = Number(process.env.PORT) || 3000;
 
