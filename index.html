@@ -154,6 +154,8 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 .status-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .status-btns .btn { display: inline-flex; align-items: center; gap: 8px; }
 .status-btns .dot { width: 8px; height: 8px; border-radius: 50%; }
+.pick-prio { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.pick-note textarea { width: 100%; margin-top: 12px; min-height: 52px; resize: vertical; }
 .pick-info { margin-top: 14px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 12px; background: var(--surface-2); }
 .pick-info .src { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 10px; }
 .pick-info .src .store-link { margin: 0 0 0 auto; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; }
@@ -294,6 +296,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       </select></label>
     </div>
     <div class="pick" id="pickBody"></div>
+    <div class="pick-note" id="pickNote"></div>
     <div class="pick-info" id="pickInfo" aria-live="polite"></div>
     <div id="pickActions">
       <p class="pick-label" id="pickLeft"></p>
@@ -979,11 +982,14 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
   function pickRandom() {
     const dlg = $('#pickDlg'), poolSel = $('#pickPool');
     let current = null;
+    // Slaat een nog niet opgeslagen notitie van de getoonde game op
+    let flushNote = () => {};
     const pool = () => state.games.filter(g => entry(g.appid).status === state.pickPool);
     // Hoge prioriteit telt zwaarder mee
     const w = g => ({ 1: 4, 2: 2, 3: 1 })[entry(g.appid).priority] || 1.5;
 
     const show = () => {
+      flushNote(); flushNote = () => {};
       let list = pool();
       if (list.length > 1 && current) list = list.filter(g => g.appid !== current.appid);
       $('#pickActions').hidden = $('#pickAgain').hidden = !list.length;
@@ -991,6 +997,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
         current = null;
         $('#pickBody').replaceChildren(el('p', { text: `Geen games meer in ${STATUSES.find(s => s.id === state.pickPool).label}.` }));
         $('#pickInfo').replaceChildren();
+        $('#pickNote').replaceChildren();
         return;
       }
       let r = Math.random() * list.reduce((s, g) => s + w(g), 0), pick = list[0];
@@ -998,10 +1005,28 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
       current = pick;
       const e = entry(pick.appid);
       const store = `https://store.steampowered.com/app/${pick.appid}`;
+      const prio = el('div', { class: 'prio', role: 'group', 'aria-label': 'Prioriteit' },
+        PRIOS.map(p => el('button', { type: 'button', title: `Prioriteit ${p.t}`, 'aria-pressed': String(e.priority === p.v), text: p.l, onclick: () => {
+          const now = entry(pick.appid).priority === p.v ? null : p.v;
+          setEntry(pick.appid, { priority: now });
+          prio.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', String(PRIOS[i].v === now)));
+        } })));
       $('#pickBody').replaceChildren(
         el('a', { href: store, target: '_blank', rel: 'noopener', tabindex: '-1', 'aria-hidden': 'true' }, el('img', { src: header(pick.appid), alt: '' })),
         el('div', {}, el('strong', { text: pick.name }), el('div', { class: 'sub', text: fmtTime(pick.playtime) }),
-          e.note ? el('div', { class: 'sub', text: e.note }) : null));
+          el('div', { class: 'pick-prio' }, 'Prioriteit', prio)));
+
+      let t;
+      const ta = el('textarea', { placeholder: 'Notitie, bv. waar je gebleven was of waarom je het wil spelen…', 'aria-label': `Notitie voor ${pick.name}` });
+      ta.value = e.note || '';
+      const save = () => {
+        clearTimeout(t);
+        const note = ta.value.trim();
+        if (note !== (entry(pick.appid).note || '')) setEntry(pick.appid, { note: note || undefined });
+      };
+      ta.addEventListener('input', () => { clearTimeout(t); t = setTimeout(save, 300); });
+      flushNote = save;
+      $('#pickNote').replaceChildren(ta);
       showInfo(pick.appid);
       const n = pool().length;
       $('#pickLeft').textContent = `Indelen als (${n} game${n === 1 ? '' : 's'} in ${STATUSES.find(s => s.id === state.pickPool).label})`;
@@ -1017,6 +1042,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 
     const classify = s => {
       if (!current) return;
+      flushNote();
       setEntry(current.appid, { status: s.id });
       renderTabs(); renderList();
       if (s.id === 'playing') { dlg.close(); return toast(`Veel plezier met ${current.name}!`); }
@@ -1027,6 +1053,8 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     poolSel.value = state.pickPool;
     poolSel.onchange = () => { state.pickPool = poolSel.value; saveUi(); setPool(); };
     $('#pickAgain').onclick = show;
+    // Prioriteit en notitie uit de popup ook in de lijst laten zien
+    dlg.onclose = () => { flushNote(); renderList(); };
     setPool();
     dlg.showModal();
   }
