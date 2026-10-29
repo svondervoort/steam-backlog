@@ -18,6 +18,8 @@ gh repo create steam-backlog --private --source=. --push
 
 Ga daarna in Vercel (je persoonlijke account) naar *Add New → Project*, importeer de repo, laat Framework Preset op *Other* staan en zet bij Environment Variables `STEAM_API_KEY` en `ALLOWED_STEAMIDS`. Elke push naar `main` geeft dan een nieuwe productie-deploy en elke andere branch een preview-URL.
 
+Bezoekersstatistieken en laadsnelheid: zet in Vercel onder *Analytics* de Web Analytics aan en onder *Speed Insights* de Speed Insights. De app laadt beide scripts zelf (zonder npm-pakket, zonder cookies) en slaat ze lokaal over.
+
 ## Installeren
 
 1. Vraag een Steam Web API key aan: https://steamcommunity.com/dev/apikey (domein mag alles zijn, bv. `localhost`).
