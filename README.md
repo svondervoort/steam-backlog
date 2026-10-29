@@ -60,7 +60,7 @@ npm run dev                 # → http://localhost:3000
 - **Snel indelen**: zet alle niet-ingedeelde games onder X minuten speeltijd in één keer op Backlog. De drempel is instelbaar, zodat games die alleen voor kaarten zijn ge-idled ook meetellen.
 - **Lang op Speelt nu**: staat een game al meer dan 2 weken op Speelt nu en heb je hem de afgelopen 2 weken niet gespeeld, dan krijgt hij een markering met een knop *Naar Backlog*.
 - **Statistieken**: aantallen per status, speeltijd, uitgespeeld per jaar (naar laatst gespeeld) en je meest gespeelde games.
-- **Wat speel ik?**: willekeurige game uit je backlog; hogere prioriteit telt zwaarder mee.
+- **Wat speel ik?**: willekeurige game uit je Backlog of uit Niet ingedeeld (hogere prioriteit telt zwaarder mee), met een link naar de Steam Store. Deel hem meteen in: kies je Speelt nu, dan sluit de popup; bij een andere status krijg je direct de volgende game. Zo werk je snel een stapel games door.
 - **Reviews**: de app leest je openbare Steam-reviews (`/recommended/`) en toont per game een badge (Aanbevolen / Niet aanbevolen) met een link naar je review. Je kunt filteren op *Met review* of *Zonder review*.
 - **Review = uitgespeeld**: games met een review gaan automatisch naar Uitgespeeld, maar alleen als ze op Niet ingedeeld, Backlog of Speelt nu stonden. Elke game wordt maar één keer omgezet: zet je hem daarna zelf terug, dan blijft dat zo. Je zet dit aan of uit onder *Snel indelen*.
 - **Recent gespeeld = speelt nu**: games die je de afgelopen 2 weken hebt gespeeld gaan automatisch naar Speelt nu, maar alleen als ze op Niet ingedeeld of Backlog stonden. Ook hier geldt: elke game maar één keer, dus zet je hem zelf terug, dan blijft dat zo. Aan/uit onder *Snel indelen*.

@@ -147,7 +147,17 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
 .choices .btn small { display: block; color: var(--muted); font-weight: 400; }
 .choices .btn.primary small { color: inherit; opacity: .85; }
 .pick { display: flex; gap: 12px; align-items: center; }
-.pick img { width: 184px; max-width: 45%; border-radius: 6px; }
+.pick-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.pick-head h2 { margin: 0; }
+.pick-head label { color: var(--muted); font-size: 14px; display: flex; gap: 6px; align-items: center; }
+.pick-label { font-size: 13px; margin: 16px 0 8px; }
+.status-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.status-btns .btn { display: inline-flex; align-items: center; gap: 8px; }
+.status-btns .dot { width: 8px; height: 8px; border-radius: 50%; }
+.pick > a { flex: none; width: 184px; max-width: 45%; line-height: 0; }
+.pick img { width: 100%; border-radius: 6px; }
+.store-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; color: var(--accent); text-decoration: none; }
+.store-link:hover { text-decoration: underline; }
 
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
 .toast.show { opacity: 1; }
@@ -242,14 +252,23 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
   </form>
 </dialog>
 
-<dialog id="pickDlg">
+<dialog id="pickDlg" class="wide">
   <form method="dialog">
-    <h2>Speel dit hierna</h2>
+    <div class="pick-head">
+      <h2 id="pickTitle">Speel dit hierna</h2>
+      <label>Uit <select id="pickPool">
+        <option value="backlog">Backlog</option>
+        <option value="none">Niet ingedeeld</option>
+      </select></label>
+    </div>
     <div class="pick" id="pickBody"></div>
+    <div id="pickActions">
+      <p class="pick-label" id="pickLeft"></p>
+      <div class="status-btns" id="pickStatus" role="group" aria-label="Indelen als"></div>
+    </div>
     <div class="row">
-      <button class="btn" value="again" id="pickAgain">Andere</button>
-      <button class="btn" value="playing" id="pickPlay">Zet op ‘Speelt nu’</button>
-      <button class="btn primary" value="close">Sluiten</button>
+      <button class="btn" type="button" id="pickAgain">Andere</button>
+      <button class="btn primary" value="close" autofocus>Sluiten</button>
     </div>
   </form>
 </dialog>
@@ -361,7 +380,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
   const state = {
     steamid: null, profile: null, fetchedAt: null, games: [], entries: {},
     filter: 'all', q: '', sort: 'name', unplayed: false, unplayedMin: 60, limit: PAGE,
-    reviews: {}, reviewsPrivate: false, reviewApplied: [], reviewFilter: 'all', autoReview: true,
+    reviews: {}, reviewsPrivate: false, reviewApplied: [], reviewFilter: 'all', autoReview: true, pickPool: 'backlog',
     playingApplied: [], autoPlaying: true, collectionMap: {},
   };
   Object.assign(state, store.get(K.ui, {}), { limit: PAGE });
@@ -370,7 +389,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
   const entry = id => state.entries[id] || { status: 'none' };
   const saveLocal = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied });
   const saveEntries = () => { saveLocal(); scheduleSync(); };
-  const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview, autoPlaying: state.autoPlaying, collectionMap: state.collectionMap });
+  const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview, autoPlaying: state.autoPlaying, collectionMap: state.collectionMap, pickPool: state.pickPool });
 
   // Nieuwe status; `since` onthoudt wanneer de status voor het laatst veranderde
   const withStatus = (appid, status, extra = {}) => {
@@ -660,6 +679,7 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     library: '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+    external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
   };
   function icon(name) {
@@ -874,27 +894,59 @@ dialog h3 { font-size: 15px; margin: 0 0 8px; }
     dlg.showModal();
   }
 
+  // Willekeurige game uit Backlog of Niet ingedeeld; indelen gaat meteen door naar de volgende
   function pickRandom() {
-    const pool = state.games.filter(g => entry(g.appid).status === 'backlog');
-    if (!pool.length) return toast('Je backlog is nog leeg');
+    const dlg = $('#pickDlg'), poolSel = $('#pickPool');
+    let current = null;
+    const pool = () => state.games.filter(g => entry(g.appid).status === state.pickPool);
     // Hoge prioriteit telt zwaarder mee
     const w = g => ({ 1: 4, 2: 2, 3: 1 })[entry(g.appid).priority] || 1.5;
+
     const show = () => {
-      let r = Math.random() * pool.reduce((s, g) => s + w(g), 0), pick = pool[0];
-      for (const g of pool) { r -= w(g); if (r <= 0) { pick = g; break; } }
+      let list = pool();
+      if (list.length > 1 && current) list = list.filter(g => g.appid !== current.appid);
+      $('#pickActions').hidden = $('#pickAgain').hidden = !list.length;
+      if (!list.length) {
+        current = null;
+        $('#pickBody').replaceChildren(el('p', { text: `Geen games meer in ${STATUSES.find(s => s.id === state.pickPool).label}.` }));
+        return;
+      }
+      let r = Math.random() * list.reduce((s, g) => s + w(g), 0), pick = list[0];
+      for (const g of list) { r -= w(g); if (r <= 0) { pick = g; break; } }
+      current = pick;
       const e = entry(pick.appid);
+      const store = `https://store.steampowered.com/app/${pick.appid}`;
       $('#pickBody').replaceChildren(
-        el('img', { src: header(pick.appid), alt: '' }),
+        el('a', { href: store, target: '_blank', rel: 'noopener', tabindex: '-1', 'aria-hidden': 'true' }, el('img', { src: header(pick.appid), alt: '' })),
         el('div', {}, el('strong', { text: pick.name }), el('div', { class: 'sub', text: fmtTime(pick.playtime) }),
-          e.note ? el('div', { class: 'sub', text: e.note }) : null));
-      dlg.dataset.appid = pick.appid;
+          e.note ? el('div', { class: 'sub', text: e.note }) : null,
+          el('a', { class: 'store-link', href: store, target: '_blank', rel: 'noopener' }, icon('external'), 'Bekijk in de Steam Store')));
+      const n = pool().length;
+      $('#pickLeft').textContent = `Indelen als (${n} game${n === 1 ? '' : 's'} in ${STATUSES.find(s => s.id === state.pickPool).label})`;
     };
-    const dlg = $('#pickDlg');
-    dlg.onclose = () => {
-      if (dlg.returnValue === 'again') { show(); dlg.showModal(); }
-      else if (dlg.returnValue === 'playing') { setEntry(Number(dlg.dataset.appid), { status: 'playing' }); renderTabs(); renderList(); toast('Veel plezier!'); }
+
+    const setPool = () => {
+      $('#pickTitle').textContent = state.pickPool === 'backlog' ? 'Speel dit hierna' : 'Deel deze game in';
+      $('#pickStatus').replaceChildren(...STATUSES.filter(s => s.id !== 'none' && s.id !== state.pickPool).map(s =>
+        el('button', { type: 'button', class: 'btn', onclick: () => classify(s) }, el('span', { class: 'dot', style: `background:var(--s-${s.id})` }), s.label)));
+      current = null;
+      show();
     };
-    show(); dlg.showModal();
+
+    const classify = s => {
+      if (!current) return;
+      setEntry(current.appid, { status: s.id });
+      renderTabs(); renderList();
+      if (s.id === 'playing') { dlg.close(); return toast(`Veel plezier met ${current.name}!`); }
+      toast(`${current.name} → ${s.label}`);
+      show();
+    };
+
+    poolSel.value = state.pickPool;
+    poolSel.onchange = () => { state.pickPool = poolSel.value; saveUi(); setPool(); };
+    $('#pickAgain').onclick = show;
+    setPool();
+    dlg.showModal();
   }
 
   function exportData() {
