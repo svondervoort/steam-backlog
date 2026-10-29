@@ -101,6 +101,13 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 dialog h2 { margin: 0 0 8px; font-size: 18px; }
 dialog p { color: var(--muted); margin: 0 0 12px; }
 dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.cols { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.cols label { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.cols label small { display: block; color: var(--muted); }
+.cols select { flex: none; width: 190px; }
+.path { display: flex; gap: 8px; align-items: center; margin: 4px 0 12px; }
+.path code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size: 14px; }
 .pick { display: flex; gap: 12px; align-items: center; }
 .pick img { width: 184px; max-width: 45%; border-radius: 6px; }
 
@@ -185,6 +192,11 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
       <span>Games waarvoor ik een review heb geschreven automatisch op <b>Uitgespeeld</b> zetten
         <small>Alleen games met status Niet ingedeeld, Backlog of Speelt nu. Zet je zo'n game daarna zelf terug, dan blijft dat zo.</small></span>
     </label>
+    <label class="setting">
+      <input type="checkbox" id="autoPlaying">
+      <span>Games die ik de afgelopen 2 weken heb gespeeld automatisch op <b>Speelt nu</b> zetten
+        <small>Alleen games met status Niet ingedeeld of Backlog. Zet je zo'n game daarna zelf terug, dan blijft dat zo.</small></span>
+    </label>
     <div class="row">
       <button class="btn" value="cancel">Annuleren</button>
       <button class="btn primary" value="ok" id="bulkOk">Toepassen</button>
@@ -204,7 +216,41 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
   </form>
 </dialog>
 
+<dialog id="colHelpDlg">
+  <form method="dialog">
+    <h2>Steam-collecties importeren</h2>
+    <p>Kies het bestand <b>cloud-storage-namespace-1.json</b>. De Steam-client bewaart het op elke computer waar je Steam hebt geopend.</p>
+    <strong>macOS</strong>
+    <div class="path"><code id="pathMac"></code><button type="button" class="btn" data-copy="pathMac">Kopieer</button></div>
+    <strong>Windows</strong>
+    <div class="path"><code id="pathWin"></code><button type="button" class="btn" data-copy="pathWin">Kopieer</button></div>
+    <ul>
+      <li>macOS: druk in het kiesvenster op <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd> en plak het pad. De map Bibliotheek is normaal verborgen.</li>
+      <li>Windows: plak het pad in de adresbalk van het kiesvenster. Staat Steam op een andere schijf, pas dan het begin aan.</li>
+      <li>Geen map <code>cloudstorage</code>? Open Steam even en wacht tot je bibliotheek geladen is.</li>
+    </ul>
+    <div class="row">
+      <button class="btn" value="cancel">Annuleren</button>
+      <button class="btn primary" value="ok">Bestand kiezen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="colDlg">
+  <form method="dialog">
+    <h2>Steam-collecties importeren</h2>
+    <p>Kies per collectie welke status de games krijgen. Per game wint de meest recente wijziging: wat je na je laatste aanpassing in Steam zelf in deze app hebt veranderd, blijft staan.</p>
+    <div class="cols" id="colList"></div>
+    <p id="colCount" style="margin-top:12px"></p>
+    <div class="row">
+      <button class="btn" value="cancel">Annuleren</button>
+      <button class="btn primary" value="ok" id="colOk">Importeren</button>
+    </div>
+  </form>
+</dialog>
+
 <input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="collectionsFile" accept="application/json,.json" hidden>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -242,15 +288,17 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
     steamid: null, profile: null, fetchedAt: null, games: [], entries: {},
     filter: 'all', q: '', sort: 'name', unplayed: false, unplayedMin: 60, limit: PAGE,
     reviews: {}, reviewsPrivate: false, reviewApplied: [], reviewFilter: 'all', autoReview: true,
+    playingApplied: [], autoPlaying: true, collectionMap: {},
   };
   Object.assign(state, store.get(K.ui, {}), { limit: PAGE });
 
   const entry = id => state.entries[id] || { status: 'none' };
-  const saveEntries = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied });
-  const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview });
+  const saveEntries = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied });
+  const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview, autoPlaying: state.autoPlaying, collectionMap: state.collectionMap });
 
   function setEntry(appid, patch) {
     const cur = { ...entry(appid), ...patch, updated: Date.now() };
+    if ('status' in patch) delete cur.auto;
     if (cur.status === 'none' && !cur.priority && !cur.note) delete state.entries[appid];
     else state.entries[appid] = cur;
     saveEntries();
@@ -294,10 +342,12 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
     const saved = store.get(K.data(data.steamid), {});
     state.entries = saved.entries || {};
     state.reviewApplied = saved.reviewApplied || [];
+    state.playingApplied = saved.playingApplied || [];
     const cachedReviews = store.get(K.reviews(data.steamid), null);
     state.reviews = cachedReviews?.reviews || {};
     state.reviewsPrivate = !!cachedReviews?.private;
     state.limit = PAGE;
+    applyPlayingStatus();
     $('#intro').hidden = true; $('#app').hidden = false;
     renderAll();
   }
@@ -336,13 +386,33 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
       if (done.has(appid) || !owned.has(appid)) continue;
       done.add(appid);
       if (['none', 'backlog', 'playing'].includes(entry(appid).status)) {
-        state.entries[appid] = { ...entry(appid), status: 'done', updated: Date.now() };
+        state.entries[appid] = { ...entry(appid), status: 'done', auto: true, updated: Date.now() };
         n++;
       }
     }
     state.reviewApplied = [...done];
     saveEntries();
     if (n) toast(`${n} game${n === 1 ? '' : 's'} met een review op Uitgespeeld gezet`);
+    return n;
+  }
+
+  // Recent gespeeld → Speelt nu. Elke game maar één keer, zodat een handmatige wijziging blijft staan.
+  function applyPlayingStatus() {
+    if (!state.autoPlaying) return 0;
+    const done = new Set(state.playingApplied.map(String));
+    let n = 0;
+    for (const g of state.games) {
+      const appid = String(g.appid);
+      if (!g.playtime2w || done.has(appid)) continue;
+      done.add(appid);
+      if (['none', 'backlog'].includes(entry(appid).status)) {
+        state.entries[appid] = { ...entry(appid), status: 'playing', auto: true, updated: Date.now() };
+        n++;
+      }
+    }
+    state.playingApplied = [...done];
+    saveEntries();
+    if (n) toast(`${n} recent gespeelde game${n === 1 ? '' : 's'} op Speelt nu gezet`);
     return n;
   }
 
@@ -368,7 +438,8 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
         el('button', { class: 'btn', onclick: openBulk, text: 'Snel indelen' }),
         el('button', { class: 'btn', onclick: () => load(state.steamid, { fresh: true }), text: 'Vernieuwen' }),
         el('button', { class: 'btn', onclick: exportData, text: 'Exporteren' }),
-        el('button', { class: 'btn', onclick: () => $('#importFile').click(), text: 'Importeren' })));
+        el('button', { class: 'btn', onclick: () => $('#importFile').click(), text: 'Importeren' }),
+        el('button', { class: 'btn', onclick: openCollectionsHelp, text: 'Steam-collecties' })));
   }
 
   function renderTabs() {
@@ -498,6 +569,12 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
       state.autoReview = auto.checked; saveUi();
       if (auto.checked && applyReviewStatus()) { renderTabs(); renderList(); }
     };
+    const autoPlay = $('#autoPlaying');
+    autoPlay.checked = state.autoPlaying;
+    autoPlay.onchange = () => {
+      state.autoPlaying = autoPlay.checked; saveUi();
+      if (autoPlay.checked && applyPlayingStatus()) { renderTabs(); renderList(); }
+    };
     dlg.onclose = () => {
       if (dlg.returnValue !== 'ok') return;
       const max = Number(inp.value || 0);
@@ -552,6 +629,113 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
       }
       saveEntries(); renderAll(); toast(`${n} items geïmporteerd`);
     } catch (e) { toast(`Import mislukt: ${e.message}`); }
+  });
+
+  // ---------- Steam-collecties: cloud-storage-namespace-1.json uit <Steam>/userdata/<id>/config/cloudstorage/
+  // Formaat (niet officieel): [[key, { key, timestamp, value: '{"id","name","added":[appids]}', is_deleted? }], ...]
+  const COL_TARGETS = [
+    { v: '', l: 'Niet importeren' },
+    ...STATUSES.filter(s => s.id !== 'none').map(s => ({ v: s.id, l: s.label })),
+    { v: 'backlog:1', l: 'Backlog, prioriteit Hoog' },
+  ];
+  // Zit een game in meerdere collecties, dan wint de bovenste in deze lijst
+  const COL_RANK = ['done', 'dropped', 'skip', 'playing', 'backlog:1', 'backlog'];
+  const COL_GUESS = [
+    [/uitgespeeld|finished|completed|beaten|\bdone\b/i, 'done'],
+    [/gestopt|dropped|abandon/i, 'dropped'],
+    [/play ?next|volgende|up next/i, 'backlog:1'],
+    [/speelt nu|bezig|playing/i, 'playing'],
+    [/backlog/i, 'backlog'],
+  ];
+
+  function openCollectionsHelp() {
+    // userdata-map = 32-bit account-ID = steamID64 − 76561197960265728
+    const acc = /^\d{17}$/.test(state.steamid || '') ? String(BigInt(state.steamid) - 76561197960265728n) : '<jouw-id>';
+    const rest = ['userdata', acc, 'config', 'cloudstorage', 'cloud-storage-namespace-1.json'];
+    $('#pathMac').textContent = ['~/Library/Application Support/Steam', ...rest].join('/');
+    $('#pathWin').textContent = ['C:\\Program Files (x86)\\Steam', ...rest].join('\\');
+    const dlg = $('#colHelpDlg');
+    dlg.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+      try { await navigator.clipboard.writeText($('#' + b.dataset.copy).textContent); toast('Pad gekopieerd'); }
+      catch { toast('Kopiëren mislukt, selecteer het pad handmatig'); }
+    });
+    dlg.onclose = () => { if (dlg.returnValue === 'ok') $('#collectionsFile').click(); };
+    dlg.showModal();
+  }
+
+  function parseCollections(data) {
+    if (!Array.isArray(data)) throw new Error('Geen geldig cloud-storage-bestand');
+    const cols = [];
+    for (const item of data) {
+      const [key, meta] = Array.isArray(item) ? item : [];
+      if (!String(key).startsWith('user-collections.') || !meta || meta.is_deleted || !meta.value) continue;
+      let v;
+      try { v = JSON.parse(meta.value); } catch { continue; }
+      const dynamic = !Array.isArray(v.added);
+      cols.push({ id: v.id || key, name: v.name || v.id || key, dynamic, apps: dynamic ? [] : v.added.map(String), ts: (meta.timestamp || 0) * 1000 });
+    }
+    if (!cols.length) throw new Error('Geen collecties gevonden in dit bestand');
+    return cols.sort((a, b) => a.name.localeCompare(b.name, 'nl', { sensitivity: 'base' }));
+  }
+
+  function openCollections(cols) {
+    const owned = new Set(state.games.map(g => String(g.appid)));
+    const dlg = $('#colDlg');
+    const sels = new Map();
+    const plan = () => {
+      const best = new Map();
+      for (const c of cols) {
+        const target = sels.get(c.id)?.value;
+        if (!target) continue;
+        for (const appid of c.apps) {
+          if (!owned.has(appid)) continue;
+          const cur = best.get(appid);
+          if (!cur || COL_RANK.indexOf(target) < COL_RANK.indexOf(cur.target)) best.set(appid, { target, ts: c.ts });
+        }
+      }
+      return best;
+    };
+    const upd = () => {
+      const n = plan().size;
+      $('#colCount').textContent = `${n} game${n === 1 ? '' : 's'} in de gekozen collecties.`;
+      $('#colOk').disabled = !n;
+    };
+    $('#colList').replaceChildren(...cols.map(c => {
+      const count = c.apps.filter(a => owned.has(a)).length;
+      const guess = state.collectionMap[c.id] ?? COL_GUESS.find(([re]) => re.test(c.name))?.[1] ?? '';
+      const sel = el('select', { 'aria-label': `Status voor collectie ${c.name}`, disabled: c.dynamic, onchange: upd },
+        COL_TARGETS.map(t => el('option', { value: t.v, selected: !c.dynamic && t.v === guess, text: t.l })));
+      sels.set(c.id, sel);
+      return el('label', {}, el('span', {}, c.name, el('small', { text: c.dynamic ? 'Dynamische collectie, niet ondersteund' : `${count} game${count === 1 ? '' : 's'}` })), sel);
+    }));
+    upd();
+    dlg.onclose = () => {
+      if (dlg.returnValue !== 'ok') return;
+      for (const c of cols) if (!c.dynamic) state.collectionMap[c.id] = sels.get(c.id).value;
+      saveUi();
+      let n = 0;
+      for (const [appid, { target, ts }] of plan()) {
+        const cur = state.entries[appid];
+        if (cur && !cur.auto && cur.status !== 'none' && (cur.updated || 0) > ts) continue;
+        const [status, prio] = target.split(':');
+        const next = { ...entry(appid), status, updated: Date.now() };
+        delete next.auto;
+        if (prio) next.priority = Number(prio);
+        if (cur && cur.status === next.status && cur.priority === next.priority && !cur.auto) continue;
+        state.entries[appid] = next;
+        n++;
+      }
+      saveEntries(); renderTabs(); renderList();
+      toast(`${n} game${n === 1 ? '' : 's'} bijgewerkt vanuit Steam-collecties`);
+    };
+    dlg.showModal();
+  }
+
+  $('#collectionsFile').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; ev.target.value = '';
+    if (!f) return;
+    try { openCollections(parseCollections(JSON.parse(await f.text()))); }
+    catch (e) { toast(`Import mislukt: ${e.message}`); }
   });
 
   // ---------- misc UI
