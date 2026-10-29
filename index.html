@@ -73,6 +73,11 @@ form.lookup input { flex: 1; }
 .badge.down { color: var(--s-dropped); }
 .badge.neutral { color: var(--muted); }
 .badge:hover { background: var(--surface-2); }
+.sync-meta:not(:empty)::before { content: ' · '; }
+.sync-meta.error { color: var(--danger); }
+.badge.stale { color: var(--s-playing); }
+.link-btn { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+.link-btn:hover { text-decoration: underline; }
 .setting { display: flex; gap: 8px; align-items: flex-start; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .setting input { margin-top: 4px; }
 .setting small { display: block; color: var(--muted); }
@@ -108,6 +113,27 @@ dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16
 .path { display: flex; gap: 8px; align-items: center; margin: 4px 0 12px; }
 .path code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size: 14px; }
+dialog.wide { width: min(600px, calc(100vw - 32px)); max-width: none; }
+dialog input[type=password] { width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 20px; }
+.tile { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+.tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.tile span { color: var(--muted); font-size: 13px; }
+dialog h3 { font-size: 15px; margin: 0 0 8px; }
+.hbars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 6px 10px; align-items: center; margin-bottom: 20px; font-size: 14px; }
+.hbars .lbl { display: flex; align-items: center; gap: 6px; }
+.hbars .dot { width: 8px; height: 8px; border-radius: 50%; }
+.hbars .track { height: 10px; }
+.hbars .fill { height: 100%; min-width: 2px; background: var(--accent); border-radius: 0 4px 4px 0; }
+.hbars .val { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.cols-chart { display: flex; align-items: flex-end; gap: 2px; height: 140px; margin-bottom: 4px; }
+.cols-chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; font-size: 12px; color: var(--muted); }
+.cols-chart .col i { display: block; width: min(36px, 80%); min-height: 2px; background: var(--accent); border-radius: 4px 4px 0 0; }
+.cols-chart .col:hover i { filter: brightness(1.15); }
+.cols-axis { display: flex; gap: 2px; border-top: 1px solid var(--border); padding-top: 4px; margin-bottom: 20px; }
+.cols-axis span { flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
+.top { margin: 0 0 8px; padding-left: 20px; font-size: 14px; }
+.top li span { color: var(--muted); }
 .pick { display: flex; gap: 12px; align-items: center; }
 .pick img { width: 184px; max-width: 45%; border-radius: 6px; }
 
@@ -216,6 +242,29 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
   </form>
 </dialog>
 
+<dialog id="syncDlg">
+  <form method="dialog">
+    <h2>Synchroniseren</h2>
+    <p>Bewaar je indeling op de server, zodat je hem op al je apparaten ziet. Vul het sync-token in dat je als <code>SYNC_TOKEN</code> in Vercel hebt ingesteld. Het token wordt alleen in deze browser bewaard.</p>
+    <label for="syncToken" class="sr">Sync-token</label>
+    <input type="password" id="syncToken" autocomplete="off" placeholder="Sync-token">
+    <p id="syncInfo" style="margin-top:12px"></p>
+    <div class="row">
+      <button class="btn" value="off" id="syncOff">Uitzetten</button>
+      <button class="btn" value="cancel">Annuleren</button>
+      <button class="btn primary" value="ok">Opslaan</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="statsDlg" class="wide">
+  <form method="dialog">
+    <h2>Statistieken</h2>
+    <div id="statsBody"></div>
+    <div class="row"><button class="btn primary" value="close">Sluiten</button></div>
+  </form>
+</dialog>
+
 <dialog id="colHelpDlg">
   <form method="dialog">
     <h2>Steam-collecties importeren</h2>
@@ -265,7 +314,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
   ];
   const PRIOS = [{ v: 1, l: 'H', t: 'Hoog' }, { v: 2, l: 'M', t: 'Middel' }, { v: 3, l: 'L', t: 'Laag' }];
   const PAGE = 60;
-  const K = { last: 'sb:last', ui: 'sb:ui', data: id => `sb:data:${id}`, games: id => `sb:games:${id}`, reviews: id => `sb:reviews:${id}` };
+  const K = { last: 'sb:last', ui: 'sb:ui', sync: 'sb:sync', data: id => `sb:data:${id}`, games: id => `sb:games:${id}`, reviews: id => `sb:reviews:${id}` };
 
   const $ = s => document.querySelector(s);
   const el = (tag, attrs = {}, ...kids) => {
@@ -291,16 +340,24 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
     playingApplied: [], autoPlaying: true, collectionMap: {},
   };
   Object.assign(state, store.get(K.ui, {}), { limit: PAGE });
+  const sync = { token: store.get(K.sync, {}).token || '', status: 'off', at: null, error: null };
 
   const entry = id => state.entries[id] || { status: 'none' };
-  const saveEntries = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied });
+  const saveLocal = () => store.set(K.data(state.steamid), { entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied });
+  const saveEntries = () => { saveLocal(); scheduleSync(); };
   const saveUi = () => store.set(K.ui, { filter: state.filter, sort: state.sort, unplayed: state.unplayed, unplayedMin: state.unplayedMin, reviewFilter: state.reviewFilter, autoReview: state.autoReview, autoPlaying: state.autoPlaying, collectionMap: state.collectionMap });
 
+  // Nieuwe status; `since` onthoudt wanneer de status voor het laatst veranderde
+  const withStatus = (appid, status, extra = {}) => {
+    const e = entry(appid);
+    return { ...e, status, since: e.status === status ? e.since : Date.now(), ...extra, updated: Date.now() };
+  };
+
+  // Lege entries blijven als { status: 'none', updated } staan, zodat het wissen ook naar andere apparaten synct
   function setEntry(appid, patch) {
-    const cur = { ...entry(appid), ...patch, updated: Date.now() };
+    const cur = 'status' in patch ? withStatus(appid, patch.status, patch) : { ...entry(appid), ...patch, updated: Date.now() };
     if ('status' in patch) delete cur.auto;
-    if (cur.status === 'none' && !cur.priority && !cur.note) delete state.entries[appid];
-    else state.entries[appid] = cur;
+    state.entries[appid] = cur;
     saveEntries();
   }
 
@@ -347,9 +404,89 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
     state.reviews = cachedReviews?.reviews || {};
     state.reviewsPrivate = !!cachedReviews?.private;
     state.limit = PAGE;
-    applyPlayingStatus();
     $('#intro').hidden = true; $('#app').hidden = false;
     renderAll();
+    // Automatische regels pas na de sync, zodat ze niet op een verouderde lokale indeling draaien
+    syncReady = syncNow();
+    syncReady.then(() => { if (applyPlayingStatus()) { renderTabs(); renderList(); } });
+  }
+
+  // ---------- synchroniseren via /api/sync (Upstash Redis). Per game wint de meest recente wijziging.
+  // Syncs lopen na elkaar via één promise-keten, zodat `syncReady` pas klaar is als alles binnen is
+  let syncReady = Promise.resolve(), syncChain = Promise.resolve(), syncTimer;
+
+  function mergeEntries(local, remote) {
+    const out = { ...local };
+    for (const [id, e] of Object.entries(remote || {})) if (!out[id] || (e.updated || 0) > (out[id].updated || 0)) out[id] = e;
+    return out;
+  }
+
+  function scheduleSync() {
+    if (!sync.token || !state.steamid) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, 1500);
+  }
+
+  function syncNow() {
+    clearTimeout(syncTimer);
+    return syncChain = syncChain.then(doSync);
+  }
+
+  async function doSync() {
+    const id = state.steamid;
+    if (!sync.token || !id) { sync.status = 'off'; return; }
+    sync.status = 'busy'; renderSyncMeta();
+    try {
+      const r = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sync.token}` },
+        body: JSON.stringify({ steamid: id, entries: state.entries, reviewApplied: state.reviewApplied, playingApplied: state.playingApplied }),
+      });
+      const data = await r.json().catch(() => ({ error: `Onverwacht antwoord (HTTP ${r.status})` }));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      if (state.steamid !== id) return;
+      const before = JSON.stringify(state.entries);
+      state.entries = mergeEntries(state.entries, data.entries);
+      state.reviewApplied = [...new Set([...state.reviewApplied, ...(data.reviewApplied || [])].map(String))];
+      state.playingApplied = [...new Set([...state.playingApplied, ...(data.playingApplied || [])].map(String))];
+      saveLocal();
+      if (JSON.stringify(state.entries) !== before) {
+        renderTabs();
+        // Niet opnieuw tekenen terwijl je een notitie typt
+        if (!document.activeElement?.closest?.('.note-edit')) renderList();
+      }
+      Object.assign(sync, { status: 'ok', at: new Date(), error: null });
+    } catch (e) {
+      Object.assign(sync, { status: 'error', error: e.message });
+    } finally {
+      renderSyncMeta();
+    }
+  }
+
+  function syncLabel() {
+    return { off: '', busy: 'synchroniseren…', ok: sync.at ? `gesynchroniseerd ${sync.at.toLocaleTimeString('nl-NL', { timeStyle: 'short' })}` : '', error: `sync mislukt: ${sync.error}` }[sync.status];
+  }
+  function renderSyncMeta() {
+    const m = $('#syncMeta');
+    if (m) { m.textContent = syncLabel(); m.classList.toggle('error', sync.status === 'error'); }
+  }
+
+  function openSync() {
+    const dlg = $('#syncDlg'), inp = $('#syncToken');
+    inp.value = sync.token;
+    $('#syncOff').hidden = !sync.token;
+    $('#syncInfo').textContent = sync.token ? (syncLabel() || 'Aan') : 'Staat uit. Je indeling staat alleen in deze browser.';
+    dlg.onclose = async () => {
+      if (dlg.returnValue === 'off') {
+        Object.assign(sync, { token: '', status: 'off' }); store.set(K.sync, {}); renderSyncMeta();
+        toast('Synchroniseren uitgezet');
+      } else if (dlg.returnValue === 'ok' && inp.value.trim()) {
+        sync.token = inp.value.trim(); store.set(K.sync, { token: sync.token });
+        await syncNow();
+        toast(sync.status === 'ok' ? 'Gesynchroniseerd' : `Synchroniseren mislukt: ${sync.error}`);
+      }
+    };
+    dlg.showModal();
   }
 
   // ---------- reviews (los opgehaald: scrapen van de reviewpagina's duurt langer)
@@ -366,6 +503,8 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
       state.reviews = data.reviews || {};
       state.reviewsPrivate = !!data.private;
       store.set(K.reviews(id), data);
+      await syncReady;
+      if (state.steamid !== id) return;
       applyReviewStatus();
       renderAll();
     } catch (e) {
@@ -386,7 +525,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
       if (done.has(appid) || !owned.has(appid)) continue;
       done.add(appid);
       if (['none', 'backlog', 'playing'].includes(entry(appid).status)) {
-        state.entries[appid] = { ...entry(appid), status: 'done', auto: true, updated: Date.now() };
+        state.entries[appid] = withStatus(appid, 'done', { auto: true });
         n++;
       }
     }
@@ -406,7 +545,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
       if (!g.playtime2w || done.has(appid)) continue;
       done.add(appid);
       if (['none', 'backlog'].includes(entry(appid).status)) {
-        state.entries[appid] = { ...entry(appid), status: 'playing', auto: true, updated: Date.now() };
+        state.entries[appid] = withStatus(appid, 'playing', { auto: true });
         n++;
       }
     }
@@ -432,9 +571,11 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
           `${nf.format(Math.round(total / 60))} uur totaal`,
           state.reviewsPrivate ? 'reviews niet openbaar' : `${Object.keys(state.reviews).length} reviews`,
           `opgehaald ${fetched}`,
-        ].join(' · ') })),
+        ].join(' · ') }, el('span', { id: 'syncMeta', class: 'sync-meta' }))),
       el('div', { class: 'actions' },
         el('button', { class: 'btn', onclick: pickRandom, text: 'Wat speel ik?' }),
+        el('button', { class: 'btn', onclick: openStats, text: 'Statistieken' }),
+        el('button', { class: 'btn', onclick: openSync, text: 'Synchroniseren' }),
         el('button', { class: 'btn', onclick: openBulk, text: 'Snel indelen' }),
         el('button', { class: 'btn', onclick: () => load(state.steamid, { fresh: true }), text: 'Vernieuwen' }),
         el('button', { class: 'btn', onclick: exportData, text: 'Exporteren' }),
@@ -443,6 +584,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
   }
 
   function renderTabs() {
+    renderSyncMeta(); // renderProfile tekent de meta-regel opnieuw
     const counts = { all: state.games.length };
     for (const s of STATUSES) counts[s.id] = 0;
     for (const g of state.games) counts[entry(g.appid).status]++;
@@ -502,7 +644,8 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
         el('span', { text: fmtTime(g.playtime) }),
         last ? el('span', { text: `Laatst: ${last}` }) : null,
         g.playtime2w ? el('span', { text: `${fmtTime(g.playtime2w)} afgelopen 2 wk` }) : null,
-        reviewBadge(state.reviews[g.appid])),
+        reviewBadge(state.reviews[g.appid]),
+        staleBadge(g, e)),
       e.note ? el('div', { class: 'note-preview', text: e.note }) : null);
 
     const sel = el('select', { 'aria-label': `Status van ${g.name}`, onchange: ev => {
@@ -546,6 +689,19 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
     return row;
   }
 
+  // Staat al meer dan 2 weken op Speelt nu en is de afgelopen 2 weken niet gespeeld
+  const TWO_WEEKS = 14 * 864e5;
+  const isStale = (g, e) => e.status === 'playing' && !g.playtime2w && Date.now() - (e.since || e.updated || 0) > TWO_WEEKS;
+  function staleBadge(g, e) {
+    if (!isStale(g, e)) return null;
+    const weeks = g.lastPlayed ? Math.floor((Date.now() - g.lastPlayed * 1000) / (7 * 864e5)) : null;
+    return el('span', { class: 'sub', style: 'gap:8px' },
+      el('span', { class: 'badge stale', title: 'Staat al meer dan 2 weken op Speelt nu', text: weeks == null ? 'Nog niet gespeeld' : `${weeks} weken niet gespeeld` }),
+      el('button', { type: 'button', class: 'link-btn', text: 'Naar Backlog', onclick: () => {
+        setEntry(g.appid, { status: 'backlog' }); renderTabs(); renderList(); toast(`${g.name} terug naar Backlog`);
+      } }));
+  }
+
   const THUMB = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9Z"/></svg>';
   function reviewBadge(rv) {
     if (!rv) return null;
@@ -579,7 +735,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
       if (dlg.returnValue !== 'ok') return;
       const max = Number(inp.value || 0);
       let n = 0;
-      for (const g of state.games) if (entry(g.appid).status === 'none' && g.playtime <= max) { state.entries[g.appid] = { ...entry(g.appid), status: 'backlog', updated: Date.now() }; n++; }
+      for (const g of state.games) if (entry(g.appid).status === 'none' && g.playtime <= max) { state.entries[g.appid] = withStatus(g.appid, 'backlog'); n++; }
       saveEntries(); renderTabs(); renderList(); toast(`${n} games op Backlog gezet`);
     };
     dlg.showModal();
@@ -630,6 +786,60 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
       saveEntries(); renderAll(); toast(`${n} items geïmporteerd`);
     } catch (e) { toast(`Import mislukt: ${e.message}`); }
   });
+
+  // ---------- statistieken
+  function openStats() {
+    const games = state.games, n = games.length;
+    const hours = m => nf.format(Math.round(m / 60));
+    const pct = x => n ? `${Math.round(x / n * 100)}%` : '0%';
+    const by = id => games.filter(g => entry(g.appid).status === id);
+    const never = games.filter(g => !g.playtime).length;
+    const done = by('done'), backlog = by('backlog');
+    const revs = Object.entries(state.reviews).filter(([id]) => games.some(g => String(g.appid) === id)).map(([, v]) => v);
+    const tile = (big, small) => el('div', { class: 'tile' }, el('b', { text: big }), el('span', { text: small }));
+
+    // Per status: één kleur voor de balken, de status staat er als tekst bij
+    const counts = STATUSES.map(s => ({ ...s, n: by(s.id).length }));
+    const max = Math.max(1, ...counts.map(c => c.n));
+    const hbars = el('div', { class: 'hbars', role: 'table', 'aria-label': 'Games per status' },
+      counts.flatMap(c => [
+        el('span', { class: 'lbl', role: 'rowheader' }, el('span', { class: 'dot', style: `background:var(--s-${c.id})` }), c.label),
+        el('div', { class: 'track', 'aria-hidden': 'true' }, el('div', { class: 'fill', style: `width:${c.n / max * 100}%` })),
+        el('span', { class: 'val', role: 'cell', text: `${c.n} · ${pct(c.n)}` }),
+      ]));
+
+    // Uitgespeeld per jaar, op basis van wanneer je de game voor het laatst speelde
+    const years = {};
+    for (const g of done) if (g.lastPlayed) { const y = new Date(g.lastPlayed * 1000).getFullYear(); years[y] = (years[y] || 0) + 1; }
+    const ys = Object.keys(years).map(Number);
+    const last = Math.max(...ys), first = Math.max(Math.min(...ys), last - 9); // max. 10 jaar
+    const range = ys.length ? Array.from({ length: last - first + 1 }, (_, i) => first + i) : [];
+    const ymax = Math.max(1, ...range.map(y => years[y] || 0));
+    const yearChart = range.length ? [
+      el('h3', { text: 'Uitgespeeld per jaar' }),
+      el('p', { style: 'font-size:13px', text: 'Op basis van wanneer je de game voor het laatst speelde.' }),
+      el('div', { class: 'cols-chart', role: 'img', 'aria-label': range.map(y => `${y}: ${years[y] || 0}`).join(', ') },
+        range.map(y => el('div', { class: 'col', title: `${y}: ${years[y] || 0} uitgespeeld` },
+          el('span', { text: years[y] || '' }), el('i', { style: `height:${(years[y] || 0) / ymax * 100}%` })))),
+      el('div', { class: 'cols-axis', 'aria-hidden': 'true' }, range.map(y => el('span', { text: `'${String(y).slice(2)}` }))),
+    ] : [];
+
+    const top = [...games].sort((a, b) => b.playtime - a.playtime).slice(0, 5).filter(g => g.playtime);
+
+    $('#statsBody').replaceChildren(
+      el('div', { class: 'tiles' },
+        tile(n, 'games'),
+        tile(hours(games.reduce((s, g) => s + g.playtime, 0)), 'uur gespeeld'),
+        tile(`${never}`, `nooit gespeeld (${pct(never)})`),
+        tile(backlog.length, `in backlog, ${hours(backlog.reduce((s, g) => s + g.playtime, 0))} uur al gespeeld`),
+        tile(done.length, 'uitgespeeld'),
+        tile(revs.length, `reviews, ${revs.filter(v => v.up === true).length} aanbevolen`)),
+      el('h3', { text: 'Per status' }), hbars,
+      ...yearChart,
+      top.length ? el('h3', { text: 'Meest gespeeld' }) : null,
+      top.length ? el('ol', { class: 'top' }, top.map(g => el('li', {}, `${g.name} `, el('span', { text: fmtTime(g.playtime) })))) : null);
+    $('#statsDlg').showModal();
+  }
 
   // ---------- Steam-collecties: cloud-storage-namespace-1.json uit <Steam>/userdata/<id>/config/cloudstorage/
   // Formaat (niet officieel): [[key, { key, timestamp, value: '{"id","name","added":[appids]}', is_deleted? }], ...]
@@ -718,7 +928,7 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
         const cur = state.entries[appid];
         if (cur && !cur.auto && cur.status !== 'none' && (cur.updated || 0) > ts) continue;
         const [status, prio] = target.split(':');
-        const next = { ...entry(appid), status, updated: Date.now() };
+        const next = withStatus(appid, status);
         delete next.auto;
         if (prio) next.priority = Number(prio);
         if (cur && cur.status === next.status && cur.priority === next.priority && !cur.auto) continue;
@@ -757,6 +967,8 @@ dialog ul { color: var(--muted); margin: 0 0 12px; padding-left: 20px; font-size
   $('#unplayedMin').addEventListener('input', ev => { state.unplayedMin = Number(ev.target.value || 0); saveUi(); if (state.unplayed) renderList(); });
   $('#reviewFilter').addEventListener('change', ev => { state.reviewFilter = ev.target.value; state.limit = PAGE; saveUi(); renderList(); });
   $('#moreBtn').addEventListener('click', () => { state.limit += PAGE; renderList(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
 
   // ---------- boot: toon direct de laatst opgehaalde lijst, ververs op de achtergrond
   $('#sort').value = state.sort; $('#reviewFilter').value = state.reviewFilter;$('#unplayed').checked = state.unplayed; $('#unplayedMin').value = state.unplayedMin;

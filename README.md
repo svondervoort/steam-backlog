@@ -5,6 +5,7 @@ Vul je Steam-ID, profielnaam of profiel-URL in, haal je hele bibliotheek op en h
 - `index.html` – de app (geen build-stap, geen dependencies)
 - `api/games.js` – Vercel-functie die de Steam Web API aanroept (ResolveVanityURL, GetOwnedGames, GetPlayerSummaries)
 - `api/reviews.js` – Vercel-functie die je openbare reviewpagina's uitleest (Steam heeft hier geen officiële API voor)
+- `api/sync.js` – Vercel-functie die je indeling opslaat in Upstash Redis, voor synchroniseren tussen apparaten
 - `dev-server.mjs` – lokale testserver
 
 ## Via GitHub automatisch deployen
@@ -29,6 +30,16 @@ vercel env add ALLOWED_STEAMIDS production
 vercel --prod
 ```
 
+## Synchroniseren tussen apparaten (optioneel)
+
+Zonder sync staat je indeling alleen in de browser waarin je hem maakt. Met sync wordt hij op de server bewaard.
+
+1. Vercel → je project → *Storage* → *Create Database* → **Upstash for Redis** (gratis plan) en koppel hem aan het project. Vercel zet dan zelf `KV_REST_API_URL` en `KV_REST_API_TOKEN`.
+2. Maak een lang willekeurig token, bv. met `openssl rand -hex 32`, en zet het als env var `SYNC_TOKEN`.
+3. Redeploy. Klik in de app op *Synchroniseren* en vul hetzelfde token in, op elk apparaat één keer.
+
+Per game wint de meest recente wijziging. De app synchroniseert bij het laden, na elke wijziging en als je terugkeert naar het tabblad. Wie het token niet heeft, kan niets lezen of schrijven.
+
 ## Lokaal testen
 
 Zonder Vercel-account, alleen Node 20.6+ nodig:
@@ -45,6 +56,8 @@ npm run dev                 # → http://localhost:3000
 - **Statussen**: Niet ingedeeld, Backlog, Speelt nu, Uitgespeeld, Gestopt, Niet interessant.
 - **Prioriteit**: H / M / L (nogmaals klikken haalt hem weg).
 - **Snel indelen**: zet alle niet-ingedeelde games onder X minuten speeltijd in één keer op Backlog. De drempel is instelbaar, zodat games die alleen voor kaarten zijn ge-idled ook meetellen.
+- **Lang op Speelt nu**: staat een game al meer dan 2 weken op Speelt nu en heb je hem de afgelopen 2 weken niet gespeeld, dan krijgt hij een markering met een knop *Naar Backlog*.
+- **Statistieken**: aantallen per status, speeltijd, uitgespeeld per jaar (naar laatst gespeeld) en je meest gespeelde games.
 - **Wat speel ik?**: willekeurige game uit je backlog; hogere prioriteit telt zwaarder mee.
 - **Reviews**: de app leest je openbare Steam-reviews (`/recommended/`) en toont per game een badge (Aanbevolen / Niet aanbevolen) met een link naar je review. Je kunt filteren op *Met review* of *Zonder review*.
 - **Review = uitgespeeld**: games met een review gaan automatisch naar Uitgespeeld, maar alleen als ze op Niet ingedeeld, Backlog of Speelt nu stonden. Elke game wordt maar één keer omgezet: zet je hem daarna zelf terug, dan blijft dat zo. Je zet dit aan of uit onder *Snel indelen*.

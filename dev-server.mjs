@@ -1,11 +1,12 @@
-// Lokale testserver zonder Vercel: serveert index.html en /api/games.
+// Lokale testserver zonder Vercel: serveert index.html en de functies in api/.
 // Start met: npm run dev  (leest STEAM_API_KEY uit .env)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import games from './api/games.js';
 import reviews from './api/reviews.js';
+import sync from './api/sync.js';
 
-const routes = { '/api/games': games, '/api/reviews': reviews };
+const routes = { '/api/games': games, '/api/reviews': reviews, '/api/sync': sync };
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -21,6 +22,11 @@ http
     if (handler) {
       // Minimale nabootsing van Vercel's req.query / res.status().json()
       req.query = Object.fromEntries(url.searchParams);
+      if (req.method === 'POST') {
+        let raw = '';
+        for await (const chunk of req) raw += chunk;
+        try { req.body = JSON.parse(raw || '{}'); } catch { req.body = raw; }
+      }
       res.status = (code) => ((res.statusCode = code), res);
       res.json = (body) => {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
